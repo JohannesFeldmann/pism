@@ -43,12 +43,35 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
   PetscErrorCode ierr;
 
   if (!config.get_flag("is_dry_simulation")) {
-    ierr = verbPrintf(2, grid.com, "* Initializing the constant ocean model...\n"); CHKERRQ(ierr);
+    ierr = verbPrintf(2, grid.com, "* Initializing the constant ocean PIK model...\n"); CHKERRQ(ierr);
   }
 
   ice_thickness = dynamic_cast<IceModelVec2S*>(vars.get("land_ice_thickness"));
   if (!ice_thickness) { SETERRQ(grid.com, 1, "ERROR: ice thickness is not available"); }
 
+  ierr = PISMOptionsIsSet("-use_waterTemp_PIG_TG", waterTemp_PIG_TG_set); CHKERRQ(ierr); 
+
+  if (waterTemp_PIG_TG_set) {
+    waterTemp_array.resize(3);
+    // default values:
+    waterTemp_array[0] = -1.7; 
+    waterTemp_array[1] = -1.7;
+    waterTemp_array[2] = -1.7;
+    
+    ierr = PISMOptionsRealArray("-use_waterTemp_PIG_TG", "waterTemp_PIG_n, waterTemp_PIG_s, waterTemp_TG",
+                              waterTemp_array, waterTemp_PIG_TG_set); CHKERRQ(ierr);
+                             
+    ierr = verbPrintf(2, grid.com,
+                      "* Water temperatures for PIGn, PIGs and TG are are set separately to\n"
+                      "     waterTemp_PIG_n=%f K, waterTemp_PIG_s=%f K, waterTemp_TG=%f K \n", waterTemp_array[0], waterTemp_array[1], waterTemp_array[2]); CHKERRQ(ierr);
+                              
+    if (waterTemp_array.size() != 3) {
+      PetscPrintf(grid.com,
+                "PISM ERROR: option -use_waterTemp_PIG_TG requires a comma-separated list with 3 numbers; got %d\n",
+                waterTemp_array.size());
+      PISMEnd();
+    }                      
+  }
   return 0;
 }
 
@@ -115,14 +138,25 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
     meltfactor = meltfactor_pik; // default is 5e-3 as in martin_winkelmann11
   }
 
+  if (waterTemp_PIG_TG_set) {
+    T_water_PIG_n = waterTemp_array[0];
+    T_water_PIG_s = waterTemp_array[1];
+    T_water_TG = waterTemp_array[2];
+    // use boundaries for PIG north and south (64) and TG (82) which were defined
+    // for 5km and scale to used resolution
+    dx = grid.dx;
+    innerPIGbound = int((64*5000)/dx + 0.5); //addition of 0.5 is because C++ automatically rounds down
+    TGbound = int((82*5000)/dx + 0.5);
+  }
+
   PetscScalar **H;
+
+
   ierr = ice_thickness->get_array(H);   CHKERRQ(ierr);
   ierr = result.begin_access(); CHKERRQ(ierr);
 
-
   for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
     for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
-
       // compute T_f[i][j] according to beckmann_goosse03, which has the
       // meaning of the freezing temperature of the ocean water directly
       // under the shelf, (of salinity 35psu) [this is related to the
@@ -131,6 +165,21 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
       PetscScalar shelfbaseelev = - (rho_ice / rho_ocean) * H[i][j],
         T_f= 273.15 + (0.0939 -0.057 * ocean_salinity + 7.64e-4 * shelfbaseelev);
       // add 273.15 to get it in Kelvin
+
+	if(waterTemp_PIG_TG_set && j > TGbound){
+	  if(i <= innerPIGbound){
+	    T_ocean = 273.15 + waterTemp_array[0];
+	    // T_ocean = 273.15 + T_water_PIG_n;
+	  }
+	  if(i > innerPIGbound){
+	    T_ocean = 273.15 + waterTemp_array[1];
+	    // T_ocean = 273.15 + T_water_PIG_s;
+	  }
+	}
+	if(waterTemp_PIG_TG_set && j <= TGbound){
+	  T_ocean = 273.15 + waterTemp_array[2];
+	  // T_ocean = 273.15 + T_water_TG;
+	}
 
       // compute ocean_heat_flux according to beckmann_goosse03
       // positive, if T_oc > T_ice ==> heat flux FROM ocean TO ice
