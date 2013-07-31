@@ -204,7 +204,7 @@ PetscErrorCode SSAFD::assemble_rhs(Vec rhs) {
   for (PetscInt i = grid.xs; i < grid.xs + grid.xm; ++i) {
     for (PetscInt j = grid.ys; j < grid.ys + grid.ym; ++j) {
 
-      if (vel_bc && (bc_locations->as_int(i, j) == 1)) {
+      if (vel_bc && (bc_locations->as_int(i, j) > 0)) {
         rhs_uv[i][j].u = scaling * (*vel_bc)(i, j).u;
         rhs_uv[i][j].v = scaling * (*vel_bc)(i, j).v;
         continue;
@@ -452,7 +452,7 @@ PetscErrorCode SSAFD::assemble_matrix(bool include_basal_shear, Mat A) {
     for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
 
       // Handle the easy case: provided Dirichlet boundary conditions
-      if (vel_bc && bc_locations && bc_locations->as_int(i,j) == 1) {
+      if (vel_bc && bc_locations && bc_locations->as_int(i,j) > 0) {
         // set diagonal entry to one (scaled); RHS entry will be known velocity;
         ierr = set_diagonal_matrix_entry(A, i, j, scaling); CHKERRQ(ierr);
         continue;
