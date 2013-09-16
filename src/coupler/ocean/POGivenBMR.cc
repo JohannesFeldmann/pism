@@ -19,7 +19,7 @@
 #include "POGivenBMR.hh"
 #include "IceGrid.hh"
 #include "PISMVars.hh"
-#include "pism_options.hh" 
+#include "pism_options.hh"
 
 PetscErrorCode POGivenBMR::init(PISMVars &vars) {
   PetscErrorCode ierr;
@@ -52,18 +52,18 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
   // adjustment of basal melt rates
   ierr = PISMOptionsIsSet("-adjust_bmr", adjust_bmr_set); CHKERRQ(ierr);
 
-  if (adjust_bmr_set) { 
+  if (adjust_bmr_set) {
     ierr = verbPrintf(2, grid.com,
-                      "* Sub-shelf mass flux will be adjusted according to reference ice shelf base elevation"); CHKERRQ(ierr);   
+                      "* Sub-shelf mass flux will be adjusted according to reference ice shelf base elevation"); CHKERRQ(ierr);
 
     ierr = find_pism_input(filename, regrid, start); CHKERRQ(ierr);
 
-    ierr = ref_shelfbaseelev_array.create(grid, "draft", false); CHKERRQ(ierr);
+    ierr = ref_shelfbaseelev_array.create(grid, "melt_ref_thk", false); CHKERRQ(ierr);
     ierr = ref_shelfbaseelev_array.set_attrs("model_state",
 					  "reference ice geometry",
 					  "m",
 					  ""); CHKERRQ(ierr); // no CF standard_name ??
-    // ierr = variables.add(ref_shelfbaseelev_array); CHKERRQ(ierr); Would have to be done in "iceModel.cc" 
+    // ierr = variables.add(ref_shelfbaseelev_array); CHKERRQ(ierr); Would have to be done in "iceModel.cc"
 
     ref_openocean_shelfthk = config.get("ref_openocean_shelfthk");
 
@@ -75,9 +75,9 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
 		      ref_openocean_shelfthk); CHKERRQ(ierr);
 
     // read reference ice geometry from file
-    ierr = verbPrintf(2, grid.com, 
-		      "  - Reading reference ice geometry ('draft') from '%s' ... \n",
-		      filename.c_str()); CHKERRQ(ierr); 
+    ierr = verbPrintf(2, grid.com,
+		      "  - Reading reference ice geometry ('melt_ref_thk') from '%s' ... \n",
+		      filename.c_str()); CHKERRQ(ierr);
     if (regrid) {
       ierr = ref_shelfbaseelev_array.regrid(filename.c_str(), true); CHKERRQ(ierr); // fails if not found!
     } else {
@@ -120,7 +120,7 @@ PetscErrorCode POGivenBMR::shelf_base_temperature(IceModelVec2S &result) {
     }
   }
   ierr = ice_thickness->end_access();   CHKERRQ(ierr);
-  ierr = result.end_access(); CHKERRQ(ierr);  
+  ierr = result.end_access(); CHKERRQ(ierr);
 
   return 0;
 }
@@ -147,20 +147,34 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
   for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
     for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
       const PetscScalar curr_shelfbaseelev = - ( ice_rho / sea_water_rho ) * H[i][j]; // FIXME issue #15
+      ierr = verbPrintf(3, grid.com,
+      "current shelf base elev, ref shelfbase elev = %f, %f\n", curr_shelfbaseelev, ref_shelfbaseelev_array(i,j)); CHKERRQ(ierr);
       if (adjust_bmr_set) {
 	// area where initially open ocean and hence no reference from data
-	if (ref_shelfbaseelev_array(i,j) == 9999) {
+	if (ref_shelfbaseelev_array(i,j) == 0) {
+    ierr = verbPrintf(3, grid.com,
+    "set ref shelfbase elev to standard = %f\n", ref_openocean_shelfbaseelev); CHKERRQ(ierr);
 	  ref_shelfbaseelev = ref_openocean_shelfbaseelev;
 	}
 	else {
-	  ref_shelfbaseelev = ref_shelfbaseelev_array(i,j);
+	  ref_shelfbaseelev = - ( ice_rho / sea_water_rho ) * ref_shelfbaseelev_array(i,j);
 	}
+
+  ierr = verbPrintf(3, grid.com,
+  "final reference base elev = %f\n", ref_shelfbaseelev); CHKERRQ(ierr);
+
+
 	// difference between reference and current shelf base elevation
 	// gives difference in pressure melting point (dT_pmp) which is
-	// converted to difference in mass flux by using C_BMR 
+	// converted to difference in mass flux by using C_BMR
 	// (value motivated by empirical finding of rignot_jacobs02)
 	dT_pmp = beta_CC_grad * ( ref_shelfbaseelev - curr_shelfbaseelev );
+  ierr = verbPrintf(3, grid.com, "original bmelt = %e\n", mass_flux(i,j)); CHKERRQ(ierr);
+
 	result(i,j) = mass_flux(i,j) + ( C_BMR * dT_pmp ) / secpera;
+
+  ierr = verbPrintf(3, grid.com, "adjusted bmelt = %e\n", result(i,j)); CHKERRQ(ierr);
+
       } else {
 	result(i,j) = mass_flux(i,j);
       }
