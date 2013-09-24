@@ -280,6 +280,9 @@ netcdf pism_config {
     pism_config:ref_openocean_shelfthk = 300.0;
     pism_config:ref_openocean_shelfthk_doc = "m; Reference thickness of ice shelf in area which initially is open ocean.";
 
+    pism_config:meltrate_increase_per_K = 10.0;
+    pism_config:meltrate_increase_per_K_doc = "m/(year*K); Increase of the meltrate per degree K. from Rignot and Jacobs, Science 2002.";
+
     pism_config:nuBedrock = 5.0e15;
     pism_config:nuBedrock_doc = "Pa s; Staggered Viscosity used as side friction parameterization.";
 

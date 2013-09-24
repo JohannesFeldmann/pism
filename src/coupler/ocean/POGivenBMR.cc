@@ -60,24 +60,28 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
 
     ierr = melt_ref_thk.create(grid, "melt_ref_thk", false); CHKERRQ(ierr);
     ierr = melt_ref_thk.set_attrs("model_state",
-					  "reference ice geometry",
-					  "m",
-					  ""); CHKERRQ(ierr); // no CF standard_name ??
+            "reference ice geometry",
+            "m",
+            ""); CHKERRQ(ierr); // no CF standard_name ??
     // ierr = variables.add(melt_ref_thk); CHKERRQ(ierr); Would have to be done in "iceModel.cc"
 
-    ref_openocean_shelfthk = config.get("ref_openocean_shelfthk");
+    ref_openocean_shelfthk  = config.get("ref_openocean_shelfthk");
+    meltrate_increase_per_K = config.get("meltrate_increase_per_K"); // m/(year*K)
 
     ierr = PISMOptionsReal("-adjust_bmr", "ref_openocean_shelfthk",
-			   ref_openocean_shelfthk, adjust_bmr_set); CHKERRQ(ierr);
+         ref_openocean_shelfthk, adjust_bmr_set); CHKERRQ(ierr);
+
+    ierr = PISMOptionsReal("-bmr_per_K", "meltrate_increase_per_K",
+         meltrate_increase_per_K, bmr_per_K_set); CHKERRQ(ierr);
 
     ierr = verbPrintf(2, grid.com,
-                      "\n  - Reference ice thickness for initially open ocean area: %f\n",
-		      ref_openocean_shelfthk); CHKERRQ(ierr);
+                      "\n  - Reference ice thickness for initially open ocean area: %f\n  - Meltrate increase per K: %f\n",
+          ref_openocean_shelfthk, meltrate_increase_per_K); CHKERRQ(ierr);
 
     // read reference ice geometry from file
     ierr = verbPrintf(2, grid.com,
-		      "  - Reading reference ice geometry ('melt_ref_thk') from '%s' ... \n",
-		      filename.c_str()); CHKERRQ(ierr);
+          "  - Reading reference ice geometry ('melt_ref_thk') from '%s' ... \n",
+          filename.c_str()); CHKERRQ(ierr);
     if (regrid) {
       ierr = melt_ref_thk.regrid(filename.c_str(), true); CHKERRQ(ierr); // fails if not found!
     } else {
@@ -133,7 +137,6 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
     sea_water_rho = config.get("sea_water_density");
 
   PetscReal dT_pmp;
-  PetscReal C_BMR = 10.0; // m/(a*K)
   PetscReal shelfbaseelev, ref_shelfbaseelev, reference_thickness;
   // convert input reference thk to shelfbaseelev
   //PetscReal ref_openocean_shelfbaseelev = - ( ice_rho / sea_water_rho ) * ref_openocean_shelfthk;
@@ -166,12 +169,12 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
 
         // difference between reference and current shelf base elevation
         // gives difference in pressure melting point (dT_pmp) which is
-        // converted to difference in mass flux by using C_BMR
+        // converted to difference in mass flux by using meltrate_increase_per_K
         // (value motivated by empirical finding of rignot_jacobs02)
         dT_pmp = beta_CC_grad * ( ref_shelfbaseelev - shelfbaseelev );
         ierr = verbPrintf(3, grid.com, "original bmelt = %e\n", mass_flux(i,j)); CHKERRQ(ierr);
 
-        result(i,j) = mass_flux(i,j) + ( C_BMR * dT_pmp ) / secpera;
+        result(i,j) = mass_flux(i,j) + ( meltrate_increase_per_K * dT_pmp ) / secpera;
 
         ierr = verbPrintf(3, grid.com, "adjusted bmelt = %e\n", result(i,j)); CHKERRQ(ierr);
 

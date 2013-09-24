@@ -40,15 +40,15 @@ public:
     // "Periodize" the climate:
     my_t = Model::grid.time->mod(my_t - bc_reference_time, bc_period);
 
-    // my_dt = temp.max_timestep(my_t);
+     //my_dt = mass_flux.max_timestep(my_t);
 
     mass_flux_max_dt = mass_flux.max_timestep(my_t);
 
-    // if (my_dt > 0) {
-    //   if (mass_flux_max_dt > 0)
-    //     my_dt = PetscMin(mass_flux_max_dt, my_dt);
-    // }
-    // else my_dt = mass_flux_max_dt;
+     //if (my_dt > 0) {
+       //if (mass_flux_max_dt > 0)
+         //my_dt = PetscMin(mass_flux_max_dt, my_dt);
+     //}
+     //else my_dt = mass_flux_max_dt;
 
     my_dt = mass_flux_max_dt;
 
@@ -189,12 +189,18 @@ protected:
     }
 
     if (bc_ref_year_set) {
+      ierr = verbPrintf(2, Model::grid.com,"  - BC ref year set.\n");
       bc_reference_time = Model::grid.time->years_to_seconds(bc_reference_year);
     }
 
     if (bc_period_set) {
+      ierr = verbPrintf(2, Model::grid.com,"  - BC period set.\n");
       bc_period = Model::grid.time->years_to_seconds(bc_period_years);
     }
+
+    ierr = verbPrintf(2, Model::grid.com,
+                  "  - BC reference time, period =  %f, %f...\n",
+                  bc_reference_time, bc_period);
 
     return 0;
   }
@@ -204,7 +210,7 @@ protected:
   {
     PetscErrorCode ierr;
     unsigned int buffer_size = (unsigned int) Model::config.get("climate_forcing_buffer_size"),
-      // temp_n_records = 1, 
+      // temp_n_records = 1,
       mass_flux_n_records = 1;
 
     PIO nc(Model::grid.com, Model::grid.rank, "netcdf3");
