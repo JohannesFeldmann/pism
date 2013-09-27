@@ -51,6 +51,20 @@ PetscErrorCode IceModel::compute_enthalpy_cold(IceModelVec3 &temperature, IceMod
   ierr = result.begin_access(); CHKERRQ(ierr);
   ierr = vH.begin_access(); CHKERRQ(ierr);
 
+  ierr = vbmr.begin_access(); CHKERRQ(ierr);
+  ierr = shelfbmassflux.begin_access(); CHKERRQ(ierr);
+
+  const bool sub_gl = config.get_flag("sub_groundingline");
+  bool scale_bmr_gl_set;
+  PetscReal bmr_gl_fact;
+
+  if (sub_gl){
+    ierr = gl_mask.begin_access(); CHKERRQ(ierr);
+   }
+
+  ierr = PISMOptionsReal("-scale_bmr_gl", "bmr_gl_fact",
+			 bmr_gl_fact, scale_bmr_gl_set); CHKERRQ(ierr);
+
   PetscScalar *Tij, *Enthij; // columns of these values
   for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
     for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
@@ -61,8 +75,24 @@ PetscErrorCode IceModel::compute_enthalpy_cold(IceModelVec3 &temperature, IceMod
         ierr = EC->getEnthPermissive(Tij[k],0.0,EC->getPressureFromDepth(depth),
                                     Enthij[k]); CHKERRQ(ierr);
       }
+      if (sub_gl) {
+	vbmr(i,j) = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * vbmr(i, j);
+	if (scale_bmr_gl_set && gl_mask(i,j) < 1 && gl_mask(i,j) > 0)
+	  vbmr(i,j) = bmr_gl_fact * vbmr(i,j);
+      }
+
     }
   }
+
+  if (sub_gl){
+    ierr = gl_mask.end_access(); CHKERRQ(ierr);
+   }
+
+  ierr = vbmr.end_access(); CHKERRQ(ierr);
+  ierr = shelfbmassflux.end_access(); CHKERRQ(ierr);
+
+  ierr = vbmr.beginGhostComm(); CHKERRQ(ierr);
+  ierr = vbmr.endGhostComm(); CHKERRQ(ierr);
 
   ierr = result.end_access(); CHKERRQ(ierr);
   ierr = temperature.end_access(); CHKERRQ(ierr);
@@ -346,9 +376,15 @@ PetscErrorCode IceModel::enthalpyAndDrainageStep(
   ierr = vMask.begin_access(); CHKERRQ(ierr);
 
   const bool sub_gl = config.get_flag("sub_groundingline");
+  bool scale_bmr_gl_set;
+  PetscReal bmr_gl_fact;
+
   if (sub_gl){
     ierr = gl_mask.begin_access(); CHKERRQ(ierr);
    }
+
+  ierr = PISMOptionsReal("-scale_bmr_gl", "bmr_gl_fact",
+			 bmr_gl_fact, scale_bmr_gl_set); CHKERRQ(ierr);
 
   // these are accessed a column at a time
   ierr = u3->begin_access(); CHKERRQ(ierr);
@@ -515,8 +551,11 @@ PetscErrorCode IceModel::enthalpyAndDrainageStep(
           ierr = esys->viewColumnInfoMFile(Enthnew, fMz); CHKERRQ(ierr);
         }
 
-	if (sub_gl)
-          vbmr(i,j) = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * vbmr(i, j);
+	if (sub_gl) {
+	  vbmr(i,j) = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * vbmr(i, j);
+	  if (scale_bmr_gl_set && gl_mask(i,j) < 1 && gl_mask(i,j) > 0)
+	    vbmr(i,j) = bmr_gl_fact * vbmr(i,j);
+	}
 
         // thermodynamic basal melt rate causes water to be added to layer
         PetscScalar bwatnew = vbwat(i,j);
