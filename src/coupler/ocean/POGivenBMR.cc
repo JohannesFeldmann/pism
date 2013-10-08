@@ -136,7 +136,7 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
     ice_rho = config.get("ice_density"),
     sea_water_rho = config.get("sea_water_density");
 
-  PetscReal dT_pmp;
+  PetscReal dbmrdz;
   PetscReal shelfbaseelev, ref_shelfbaseelev, reference_thickness;
   // convert input reference thk to shelfbaseelev
   //PetscReal ref_openocean_shelfbaseelev = - ( ice_rho / sea_water_rho ) * ref_openocean_shelfthk;
@@ -155,28 +155,36 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
 
         reference_thickness = melt_ref_thk(i,j);
 
-        ierr = verbPrintf(3, grid.com,
-          "reference thickness orig = %f\n", reference_thickness); CHKERRQ(ierr);
+        //ierr = verbPrintf(3, grid.com,
+          //"reference thickness orig = %f\n", reference_thickness); CHKERRQ(ierr);
 
         if ( reference_thickness == 0)
           reference_thickness = ref_openocean_shelfthk;
 
-        ierr = verbPrintf(3, grid.com,
-          "reference thickness adapted = %f\n", reference_thickness); CHKERRQ(ierr);
+        //ierr = verbPrintf(3, grid.com,
+        //  "reference thickness adapted = %f\n", reference_thickness); CHKERRQ(ierr);
 
         shelfbaseelev     = - ( ice_rho / sea_water_rho ) * H[i][j]; // FIXME issue #15
         ref_shelfbaseelev = - ( ice_rho / sea_water_rho ) * reference_thickness;
 
-        // difference between reference and current shelf base elevation
-        // gives difference in pressure melting point (dT_pmp) which is
-        // converted to difference in mass flux by using meltrate_increase_per_K
-        // (value motivated by empirical finding of rignot_jacobs02)
-        dT_pmp = beta_CC_grad * ( ref_shelfbaseelev - shelfbaseelev );
-        ierr = verbPrintf(3, grid.com, "original bmelt = %e\n", mass_flux(i,j)); CHKERRQ(ierr);
+        // first order correction to melt rate with
+        // bmr(z) = bmr0(z) + dbmr/dz * (z-z0)
+        // db/dz is a function of bmr predominantely, we use an exponential fit here
+        // parameters for yearly melt rates
+        //dbmrdz = 0.0321799 *( 1- 0.82526363*exp(0.02508303*mass_flux(i,j)*secpera));
+        dbmrdz = -0.03337955 + 0.02736375*exp(-0.02269549*mass_flux(i,j)*secpera);
+        //array([-0.03337955,  0.02736375,  0.02269549])
+        //dT_pmp = beta_CC_grad * ( ref_shelfbaseelev - shelfbaseelev );
+        if (mass_flux(i,j) != 0)
+          ierr = verbPrintf(3, grid.com, "b0, dbdz = %e, %e\n", mass_flux(i,j)*secpera, dbmrdz ); CHKERRQ(ierr);
+        //result(i,j) = mass_flux(i,j) + ( meltrate_increase_per_K * dT_pmp ) / secpera;
+        result(i,j) = mass_flux(i,j) + dbmrdz/secpera * (shelfbaseelev - ref_shelfbaseelev) ;
 
-        result(i,j) = mass_flux(i,j) + ( meltrate_increase_per_K * dT_pmp ) / secpera;
-
-        ierr = verbPrintf(3, grid.com, "adjusted bmelt = %e\n", result(i,j)); CHKERRQ(ierr);
+        //ierr = verbPrintf(3, grid.com, "dbmrdz = %e\n", dbmrdz); CHKERRQ(ierr);
+        //ierr = verbPrintf(3, grid.com, "adjusted bmelt, delta bmelt = %e, %e\n",
+        //                  result(i,j), dbmrdz * ( ref_shelfbaseelev - shelfbaseelev ) / secpera); CHKERRQ(ierr);
+        //ierr = verbPrintf(3, grid.com, "z0, z, dz = %e, %e, %e\n",
+        //                  ref_shelfbaseelev, shelfbaseelev, ref_shelfbaseelev - shelfbaseelev); CHKERRQ(ierr);
 
        }
     }
