@@ -49,48 +49,30 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
     ierr = update(grid.time->current(), 0); CHKERRQ(ierr); // dt is irrelevant
   }
 
-  // adjustment of basal melt rates
-  ierr = PISMOptionsIsSet("-adjust_bmr", adjust_bmr_set); CHKERRQ(ierr);
+  ierr = verbPrintf(2, grid.com,
+                    "* Sub-shelf mass flux will be adjusted according to reference ice shelf base elevation"); CHKERRQ(ierr);
 
-  if (adjust_bmr_set) {
-    ierr = verbPrintf(2, grid.com,
-                      "* Sub-shelf mass flux will be adjusted according to reference ice shelf base elevation"); CHKERRQ(ierr);
+  ierr = find_pism_input(filename, regrid, start); CHKERRQ(ierr);
 
-    ierr = find_pism_input(filename, regrid, start); CHKERRQ(ierr);
+  ierr = melt_ref_thk.create(grid, "melt_ref_thk", false); CHKERRQ(ierr);
+  ierr = melt_ref_thk.set_attrs("model_state",
+          "reference ice geometry",
+          "m",
+          ""); CHKERRQ(ierr); // no CF standard_name ??
 
-    ierr = melt_ref_thk.create(grid, "melt_ref_thk", false); CHKERRQ(ierr);
-    ierr = melt_ref_thk.set_attrs("model_state",
-            "reference ice geometry",
-            "m",
-            ""); CHKERRQ(ierr); // no CF standard_name ??
-    // ierr = variables.add(melt_ref_thk); CHKERRQ(ierr); Would have to be done in "iceModel.cc"
-
-    ref_openocean_shelfthk  = config.get("ref_openocean_shelfthk");
-    meltrate_increase_per_K = config.get("meltrate_increase_per_K"); // m/(year*K)
-
-    ierr = PISMOptionsReal("-adjust_bmr", "ref_openocean_shelfthk",
-         ref_openocean_shelfthk, adjust_bmr_set); CHKERRQ(ierr);
-
-    ierr = PISMOptionsReal("-bmr_per_K", "meltrate_increase_per_K",
-         meltrate_increase_per_K, bmr_per_K_set); CHKERRQ(ierr);
-
-    ierr = verbPrintf(2, grid.com,
-                      "\n  - Reference ice thickness for initially open ocean area: %f\n  - Meltrate increase per K: %f\n",
-          ref_openocean_shelfthk, meltrate_increase_per_K); CHKERRQ(ierr);
-
-    // read reference ice geometry from file
-    ierr = verbPrintf(2, grid.com,
-          "  - Reading reference ice geometry ('melt_ref_thk') from '%s' ... \n",
-          filename.c_str()); CHKERRQ(ierr);
-    if (regrid) {
-      ierr = melt_ref_thk.regrid(filename.c_str(), true); CHKERRQ(ierr); // fails if not found!
-    } else {
-      ierr = melt_ref_thk.read(filename.c_str(), start); CHKERRQ(ierr); // fails if not found!
-    }
-    string ref_shelfbaseelev_history = "read from " + filename + "\n";
-
-    ierr = melt_ref_thk.set_attr("history", ref_shelfbaseelev_history); CHKERRQ(ierr);
+  // read reference ice geometry from file
+  ierr = verbPrintf(2, grid.com,
+        "  - Reading reference ice geometry ('melt_ref_thk') from '%s' ... \n",
+        filename.c_str()); CHKERRQ(ierr);
+  if (regrid) {
+    ierr = melt_ref_thk.regrid(filename.c_str(), true); CHKERRQ(ierr); // fails if not found!
+  } else {
+    ierr = melt_ref_thk.read(filename.c_str(), start); CHKERRQ(ierr); // fails if not found!
   }
+  string ref_shelfbaseelev_history = "read from " + filename + "\n";
+
+  ierr = melt_ref_thk.set_attr("history", ref_shelfbaseelev_history); CHKERRQ(ierr);
+  //}
 
   return 0;
 }
@@ -133,77 +115,45 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
   PetscErrorCode ierr;
 
   const PetscScalar beta_CC_grad = config.get("beta_CC") * config.get("ice_density") * config.get("standard_gravity"), // K m-1
-    ice_rho = config.get("ice_density"),
-    sea_water_rho = config.get("sea_water_density");
+  ice_rho = config.get("ice_density"),
+  sea_water_rho = config.get("sea_water_density");
 
   PetscReal dbmrdz;
   PetscReal shelfbaseelev, ref_shelfbaseelev, reference_thickness;
   // convert input reference thk to shelfbaseelev
   //PetscReal ref_openocean_shelfbaseelev = - ( ice_rho / sea_water_rho ) * ref_openocean_shelfthk;
 
+
+
+  PetscScalar **H;
   ierr = mass_flux.begin_access(); CHKERRQ(ierr);
   ierr = result.begin_access(); CHKERRQ(ierr);
+  ierr = melt_ref_thk.begin_access(); CHKERRQ(ierr);
+  ierr = ice_thickness->get_array(H);   CHKERRQ(ierr);
 
-  if (adjust_bmr_set) {
+  for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
+    for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
 
-    PetscScalar **H;
-    ierr = melt_ref_thk.begin_access(); CHKERRQ(ierr);
-    ierr = ice_thickness->get_array(H);   CHKERRQ(ierr);
+      reference_thickness = melt_ref_thk(i,j);
 
-    for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
-      for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
+      shelfbaseelev     = - ( ice_rho / sea_water_rho ) * H[i][j]; // FIXME issue #15
+      ref_shelfbaseelev = - ( ice_rho / sea_water_rho ) * reference_thickness;
 
-        reference_thickness = melt_ref_thk(i,j);
+      // first order correction to melt rate with
+      // bmr(z) = bmr0(z) + dbmr/dz * (z-z0)
+      // db/dz is a function of bmr predominantely, we use an exponential fit here
+      // parameters for yearly melt rates
+      dbmrdz = -0.03337955 + 0.02736375*exp(-0.02269549*mass_flux(i,j)*secpera);
+      //array([-0.03337955,  0.02736375,  0.02269549])
+      //dT_pmp = beta_CC_grad * ( ref_shelfbaseelev - shelfbaseelev );
 
-        //ierr = verbPrintf(3, grid.com,
-          //"reference thickness orig = %f\n", reference_thickness); CHKERRQ(ierr);
+      result(i,j) = mass_flux(i,j) + dbmrdz/secpera * (shelfbaseelev - ref_shelfbaseelev) ;
 
-        if ( reference_thickness == 0)
-          reference_thickness = ref_openocean_shelfthk;
-
-        //ierr = verbPrintf(3, grid.com,
-        //  "reference thickness adapted = %f\n", reference_thickness); CHKERRQ(ierr);
-
-        shelfbaseelev     = - ( ice_rho / sea_water_rho ) * H[i][j]; // FIXME issue #15
-        ref_shelfbaseelev = - ( ice_rho / sea_water_rho ) * reference_thickness;
-
-        // first order correction to melt rate with
-        // bmr(z) = bmr0(z) + dbmr/dz * (z-z0)
-        // db/dz is a function of bmr predominantely, we use an exponential fit here
-        // parameters for yearly melt rates
-        //dbmrdz = 0.0321799 *( 1- 0.82526363*exp(0.02508303*mass_flux(i,j)*secpera));
-        dbmrdz = -0.03337955 + 0.02736375*exp(-0.02269549*mass_flux(i,j)*secpera);
-        //array([-0.03337955,  0.02736375,  0.02269549])
-        //dT_pmp = beta_CC_grad * ( ref_shelfbaseelev - shelfbaseelev );
-        if (mass_flux(i,j) != 0)
-          ierr = verbPrintf(3, grid.com, "b0, dbdz = %e, %e\n", mass_flux(i,j)*secpera, dbmrdz ); CHKERRQ(ierr);
-        //result(i,j) = mass_flux(i,j) + ( meltrate_increase_per_K * dT_pmp ) / secpera;
-        result(i,j) = mass_flux(i,j) + dbmrdz/secpera * (shelfbaseelev - ref_shelfbaseelev) ;
-
-        //ierr = verbPrintf(3, grid.com, "dbmrdz = %e\n", dbmrdz); CHKERRQ(ierr);
-        //ierr = verbPrintf(3, grid.com, "adjusted bmelt, delta bmelt = %e, %e\n",
-        //                  result(i,j), dbmrdz * ( ref_shelfbaseelev - shelfbaseelev ) / secpera); CHKERRQ(ierr);
-        //ierr = verbPrintf(3, grid.com, "z0, z, dz = %e, %e, %e\n",
-        //                  ref_shelfbaseelev, shelfbaseelev, ref_shelfbaseelev - shelfbaseelev); CHKERRQ(ierr);
-
-       }
-    }
-
-    ierr = ice_thickness->end_access(); CHKERRQ(ierr);
-    ierr = melt_ref_thk.end_access(); CHKERRQ(ierr);
-
-
-  } else {
-
-    for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
-      for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
-
-        result(i,j) = mass_flux(i,j);
-
-      }
-    }
+     }
   }
 
+  ierr = ice_thickness->end_access(); CHKERRQ(ierr);
+  ierr = melt_ref_thk.end_access(); CHKERRQ(ierr);
   ierr = mass_flux.end_access(); CHKERRQ(ierr);
   ierr = result.end_access(); CHKERRQ(ierr);
 
@@ -257,9 +207,7 @@ PetscErrorCode POGivenBMR::write_variables(set<string> vars, string filename) {
     ierr = tmp.write(filename.c_str()); CHKERRQ(ierr);
   }
 
-  if (adjust_bmr_set) {
-    ierr = melt_ref_thk.write(filename.c_str()); CHKERRQ(ierr);
-  }
+  ierr = melt_ref_thk.write(filename.c_str()); CHKERRQ(ierr);
 
   return 0;
 }
