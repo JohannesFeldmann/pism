@@ -205,6 +205,26 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
     } else {
       SETERRQ(grid.com, 3,"PISM ERROR: PISMBedThermalUnit* btu == PETSC_NULL in temperatureStep()");
     }
+    
+    //inserted
+    ierr = vbed.begin_access(); CHKERRQ(ierr);
+    ierr = vMask.begin_access(); CHKERRQ(ierr);
+
+    const bool sub_gl = config.get_flag("sub_groundingline");
+    bool scale_bmr_gl_set, scale_subgl_set;
+    vector<double> scalearray(2);
+
+    if (sub_gl){
+      ierr = gl_mask.begin_access(); CHKERRQ(ierr);
+    }
+
+    ierr = PISMOptionsRealArray("-scale_bmr_gl", "bmr_gl_fact, topg_thresh",
+				scalearray, scale_bmr_gl_set); CHKERRQ(ierr);
+
+    ierr = PISMOptionsIsSet("-scale_subgl", "scale_subgl", scale_subgl_set); CHKERRQ(ierr);
+
+    PetscReal bmr_gl_fact = scalearray[0], topg_thresh = scalearray[1];
+    //inserted
 
     ierr = artm.begin_access(); CHKERRQ(ierr);
     ierr = shelfbmassflux.begin_access(); CHKERRQ(ierr);
@@ -392,11 +412,53 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
           bwatnew -= bwat_decay_rate * dt_TempAge;
           bwat[i][j] = PetscMin(bwat_max, PetscMax(bwatnew, 0.0));
         }
+	// inserted
+	// if (sub_gl) {
+	//   basalMeltRate[i][j] = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * basalMeltRate[i][j];
+	//   // if (mask.ocean(i,j) && shelfbmassflux(i,j) > 0.0) {
+	//   if (i == 71 && j == 12) { 
+	  
+	//   ierr = verbPrintf(2, grid.com,
+	// 		    ""
+	// 		    "bmr[71][12] %.12f ... \n",
+	// 		    basalMeltRate[i][j]); CHKERRQ(ierr);
+	//   ierr = verbPrintf(2, grid.com,
+	// 		    ""
+	// 		    "glm[71][12] %.5f ... \n",
+	// 		    gl_mask(i,j)); CHKERRQ(ierr);
+	//   ierr = verbPrintf(2, grid.com,
+	// 		    ""
+	// 		    "smf[71][12] %.12f ... \n",
+	// 		    shelfbmassflux(i,j)); CHKERRQ(ierr);
+	//   // basalMeltRate[i][j]); CHKERRQ(ierr);
+	//   // }
+	//   }
+	// }
 
+	if (sub_gl) {
+	  if (scale_bmr_gl_set && scale_subgl_set && mask.grounded(i,j) && 
+	      gl_mask(i,j) < 1 && gl_mask(i,j) > 0 && vbed(i,j) < topg_thresh) {
+	    basalMeltRate[i][j] = shelfbmassflux(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl PIG!!! \n"); CHKERRQ(ierr);
+	  }
+	  else {
+	    basalMeltRate[i][j] = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * basalMeltRate[i][j];
+	  }
+	}
+	// inserted
     }
   }
 
   if (myLowTempCount > maxLowTempCount) { SETERRQ(grid.com, 1,"too many low temps"); }
+
+  // inserted
+  if (sub_gl){
+    ierr = gl_mask.end_access(); CHKERRQ(ierr);
+   }
+
+  ierr = vbed.end_access(); CHKERRQ(ierr);
+  ierr = vMask.end_access(); CHKERRQ(ierr);
+  // inserted
 
   ierr = vH.end_access(); CHKERRQ(ierr);
   ierr = vMask.end_access(); CHKERRQ(ierr);

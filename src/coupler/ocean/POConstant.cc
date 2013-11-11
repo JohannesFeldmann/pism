@@ -65,7 +65,14 @@ PetscErrorCode POConstant::init(PISMVars &vars) {
 
   ice_thickness = dynamic_cast<IceModelVec2S*>(vars.get("land_ice_thickness"));
   if (!ice_thickness) { SETERRQ(grid.com, 1, "ERROR: ice thickness is not available"); }
-
+  //inserted
+  bed_topography = dynamic_cast<IceModelVec2S*>(vars.get("topg"));
+  if (!bed_topography) { SETERRQ(grid.com, 1, "ERROR: bed topography is not available"); }
+  mask_array = dynamic_cast<IceModelVec2S*>(vars.get("mask"));
+  if (!mask_array) { SETERRQ(grid.com, 1, "ERROR: mask not available"); }
+  gl_mask_array = dynamic_cast<IceModelVec2S*>(vars.get("gl_mask"));
+  if (!gl_mask_array) { SETERRQ(grid.com, 1, "ERROR: gl_mask not available"); }
+  //inserted
   return 0;
 }
 
@@ -104,19 +111,87 @@ PetscErrorCode POConstant::shelf_base_mass_flux(IceModelVec2S &result) {
   PetscReal L = config.get("water_latent_heat_fusion"),
     rho = config.get("ice_density"),
     meltrate;
+  
+  //inserted
+  scalearray.resize(2);
+  ierr = PISMOptionsRealArray("-scale_bmr_gl", "bmr_gl_fact, topg_thresh",
+  				scalearray, scale_bmr_gl_set); CHKERRQ(ierr);
+
+  PetscScalar **vbed;
+  PetscScalar **vmask;
+  PetscScalar **vgl_mask;
+  PetscReal bmr_gl_fact = scalearray[0], topg_thresh = scalearray[1];
+
+  const bool sub_gl = config.get_flag("sub_groundingline");
+
+  ierr = PISMOptionsIsSet("-gl_strip", "gl_strip", gl_strip_set); CHKERRQ(ierr);
+  ierr = PISMOptionsIsSet("-gl_strip_large", "gl_strip_large", gl_strip_large_set); CHKERRQ(ierr);
+  ierr = PISMOptionsIsSet("-scale_subgl", "scale_subgl", scale_subgl_set); CHKERRQ(ierr);
+
+  ierr = bed_topography->get_array(vbed); CHKERRQ(ierr);
+  ierr = mask_array->get_array(vmask); CHKERRQ(ierr);
+  ierr = gl_mask_array->get_array(vgl_mask); CHKERRQ(ierr);
+  // inserted
+
+  ierr = result.begin_access(); CHKERRQ(ierr);
 
   if (meltrate_set) {
 
     meltrate = convert(mymeltrate,"m year-1","m s-1");
+    // meltrate = convert(mymeltrate,"m year-1","m s-1");
+    ierr = result.set(meltrate); CHKERRQ(ierr);
 
-  } else {
+  } 
+  if (scale_bmr_gl_set) {
+    // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
+    for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
+      for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
 
-    // following has units:   J m-2 s-1 / (J kg-1 * kg m-3) = m s-1
-    meltrate = config.get("ocean_sub_shelf_heat_flux_into_ice") / (L * rho); // m s-1
-
+	if (gl_strip_set) {
+	  if (vmask[i][j] == 3 && (vmask[i+1][j] == 2 || vmask[i-1][j] == 2 || 
+				   vmask[i][j-1] == 2 || vmask[i][j-1] == 2 ||
+				   vmask[i+1][j+1] == 2 || vmask[i+1][j-1] == 2 || 
+				   vmask[i-1][j+1] == 2 || vmask[i-1][j-1] == 2)) {
+	    // scale bmr at thin strip of 1 grid cell width along grounding line where topg is beneath threshold
+	    if (vbed[i][j] < topg_thresh) {
+	      result(i,j) = bmr_gl_fact * result(i,j);	    
+	    }
+	  }
+	}
+	else if (gl_strip_large_set) {
+	  if (vmask[i][j] == 3 && (vmask[i+1][j] == 2 || vmask[i-1][j] == 2 || 
+				   vmask[i][j-1] == 2 || vmask[i][j-1] == 2 ||
+				   vmask[i+1][j+1] == 2 || vmask[i+1][j-1] == 2 || 
+				   vmask[i-1][j+1] == 2 || vmask[i-1][j-1] == 2 ||
+				   vmask[i+2][j] == 2 || vmask[i-2][j] == 2 || 
+				   vmask[i][j-2] == 2 || vmask[i][j-2] == 2)) {
+	    // scale bmr at thin strip of 2 grid cells width along grounding line where topg is beneath threshold
+	    if (vbed[i][j] < topg_thresh) {
+	      result(i,j) = bmr_gl_fact * result(i,j);	    
+	    }
+	  }
+	}
+	if (scale_subgl_set && vmask[i][j] == 2 && vgl_mask[i][j] < 1 && vgl_mask[i][j] > 0) {
+	  // scale bmr at grounded but partly floating ice (i.e. where gl is interpolated) 
+	  // where topg is beneath threshold
+	  if (vbed[i][j] < topg_thresh) {
+	    result(i,j) = bmr_gl_fact + result(i,j);	    
+	    // result(i,j) = bmr_gl_fact * result(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
+	  }
+	}
+      }
+    }
   }
 
-  ierr = result.set(meltrate); CHKERRQ(ierr);
+    // commented
+    // // following has units:   J m-2 s-1 / (J kg-1 * kg m-3) = m s-1
+    // meltrate = config.get("ocean_sub_shelf_heat_flux_into_ice") / (L * rho); // m s-1
+    // ierr = result.set(meltrate); CHKERRQ(ierr);
+    // commented
+  ierr = bed_topography->end_access(); CHKERRQ(ierr);
+  ierr = mask_array->end_access(); CHKERRQ(ierr);
+  ierr = gl_mask_array->end_access(); CHKERRQ(ierr);
 
   return 0;
 }

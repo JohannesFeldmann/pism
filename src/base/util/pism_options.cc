@@ -747,6 +747,9 @@ PetscErrorCode set_config_from_options(MPI_Comm /*com*/, NCConfigVariable &confi
   // gl fix
   ierr = config.flag_from_option("no_gl_fix", "avoid_gl_fix"); CHKERRQ(ierr);
 
+  // new driving stress
+  ierr = config.flag_from_option("no_new_ds", "avoid_new_drivingstress"); CHKERRQ(ierr);
+
   return 0;
 }
 

@@ -424,6 +424,7 @@ PetscErrorCode SSA::compute_driving_stress(IceModelVec2V &result) {
 
   bool compute_surf_grad_inward_ssa = config.get_flag("compute_surf_grad_inward_ssa");
   bool avoid_gl_fix = config.get_flag("avoid_gl_fix");
+  bool avoid_new_drivingstress = config.get_flag("avoid_new_drivingstress"); 
   PetscReal standard_gravity = config.get("standard_gravity"),
     ice_rho = config.get("ice_density");
   bool use_eta = (config.get_string("surface_gradient_method") == "eta");
@@ -465,7 +466,7 @@ PetscErrorCode SSA::compute_driving_stress(IceModelVec2V &result) {
             h_x = surface->diff_x_p(i,j);
             h_y = surface->diff_y_p(i,j);
           } else {
-	    if (avoid_gl_fix) {
+	    if (avoid_gl_fix || avoid_new_drivingstress) {
 	      // Old scheme for driving stress computation at grounding line
 	      h_x = surface->diff_x(i,j);
 	      h_y = surface->diff_y(i,j);
