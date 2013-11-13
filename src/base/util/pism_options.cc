@@ -658,7 +658,7 @@ PetscErrorCode set_config_from_options(MPI_Comm /*com*/, NCConfigVariable &confi
   ierr = config.scalar_from_option("nuBedrock", "nuBedrock"); CHKERRQ(ierr);
   ierr = PISMOptionsIsSet("-nuBedrock", flag);  CHKERRQ(ierr);
   if (flag)  config.set_flag("nuBedrockSet", true);
-  
+
   //ierr = config.flag_from_option("fractures", "do_fracture_density"); CHKERRQ(ierr);
   //ierr = config.flag_from_option("write_fd_fields", "write_fd_fields"); CHKERRQ(ierr);
   

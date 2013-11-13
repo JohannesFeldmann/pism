@@ -175,7 +175,7 @@ PetscErrorCode POConstant::shelf_base_mass_flux(IceModelVec2S &result) {
 	  // scale bmr at grounded but partly floating ice (i.e. where gl is interpolated) 
 	  // where topg is beneath threshold
 	  if (vbed[i][j] < topg_thresh) {
-	    result(i,j) = bmr_gl_fact + result(i,j);	    
+	    result(i,j) = bmr_gl_fact * result(i,j);	    
 	    // result(i,j) = bmr_gl_fact * result(i,j);	    
 	    // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
 	  }
