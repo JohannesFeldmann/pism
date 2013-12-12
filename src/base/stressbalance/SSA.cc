@@ -361,7 +361,7 @@ PetscErrorCode SSA::compute_principal_strain_rates(IceModelVec2S &result_e1,
   return 0;
 }
 
-PetscErrorCode SSA::compute_2D_stresses(IceModelVec2S &result_Txx, IceModelVec2S &result_Tyy, IceModelVec2S &result_Txy) {
+PetscErrorCode SSA::compute_2D_stresses(IceModelVec2S &result_Txx, IceModelVec2S &result_Tyy, IceModelVec2S &result_Txy, IceModelVec2S &result_Sn, IceModelVec2S &result_St, IceModelVec2S &result_Smag) {
   PetscErrorCode ierr;
   PetscScalar dx = grid.dx, dy = grid.dy;
 
@@ -375,6 +375,19 @@ PetscErrorCode SSA::compute_2D_stresses(IceModelVec2S &result_Txx, IceModelVec2S
   PetscScalar *E_ij;
   //E = new PetscScalar[grid.Mz];
   ierr = enthalpy->begin_access(); CHKERRQ(ierr);
+
+  bool do_buttratio = config.get_flag("do_buttratio_calc");
+
+  const double standard_gravity = config.get("standard_gravity"),
+    ocean_rho = config.get("sea_water_density"),
+    ice_rho = config.get("ice_density");
+
+  if (do_buttratio) {
+    ierr = result_Sn.begin_access(); CHKERRQ(ierr);
+    ierr = result_St.begin_access(); CHKERRQ(ierr);
+    ierr = result_Smag.begin_access(); CHKERRQ(ierr);
+  }
+  
 
  for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
     for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
@@ -437,8 +450,17 @@ PetscErrorCode SSA::compute_2D_stresses(IceModelVec2S &result_Txx, IceModelVec2S
 
          //get deviatoric stresses
          result_Txx(i,j)=nu*u_x;
-          result_Tyy(i,j)=nu*v_y;
+         result_Tyy(i,j)=nu*v_y;
          result_Txy(i,j)=0.5*nu*(u_y+v_x);
+
+	 if (do_buttratio) {
+	   PetscScalar ocean_pressure = 0.5 * ice_rho * standard_gravity * (1 - (ice_rho / ocean_rho))*H(i,j)*H(i,j);
+	   //calculate buttressing ratios
+	   //FIXME!: factor 2.0
+	   result_Sn(i,j)= 2.0 * (2.0*result_Txx(i,j) + result_Tyy(i,j)) * H(i,j) / ocean_pressure;
+	   result_St(i,j)= 2.0 * result_Txy(i,j) * H(i,j) / ocean_pressure;
+	   result_Smag(i,j)=sqrt( result_Sn(i,j)*result_Sn(i,j) + result_St(i,j)*result_St(i,j) );
+	 }
 
     } // j
   } // i
@@ -448,6 +470,12 @@ PetscErrorCode SSA::compute_2D_stresses(IceModelVec2S &result_Txx, IceModelVec2S
   ierr = result_Txx.end_access(); CHKERRQ(ierr);
   ierr = result_Tyy.end_access(); CHKERRQ(ierr);
   ierr = result_Txy.end_access(); CHKERRQ(ierr);
+
+  if (do_buttratio) {
+    ierr = result_Sn.end_access(); CHKERRQ(ierr);
+    ierr = result_St.end_access(); CHKERRQ(ierr);
+    ierr = result_Smag.end_access(); CHKERRQ(ierr);
+  }
 
   ierr = enthalpy->end_access(); CHKERRQ(ierr);
 

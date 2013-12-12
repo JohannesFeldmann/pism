@@ -40,6 +40,9 @@ netcdf pism_config {
     pism_config:avoid_new_drivingstress = "no";
     pism_config:avoid_new_drivingstress_doc = "Do not use new driving stress computation at grounding line (which uses upwind and downwind instead of centered differences).";
 
+    pism_config:do_buttratio_calc = "no";
+    pism_config:do_buttratio_calc_doc = "Calculate buttressing ratio";
+
     pism_config:count_time_steps = "no";
     pism_config:count_time_steps_doc = "If yes, IceModel::run() will count the number of time steps it took.  Sometimes useful for performance evaluation.  Counts all steps, regardless of whether processes (mass continuity, energy, velocity, ...) occurred within the step.";
 

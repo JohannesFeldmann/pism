@@ -127,25 +127,48 @@ PetscErrorCode POConstant::shelf_base_mass_flux(IceModelVec2S &result) {
   ierr = PISMOptionsIsSet("-gl_strip", "gl_strip", gl_strip_set); CHKERRQ(ierr);
   ierr = PISMOptionsIsSet("-gl_strip_large", "gl_strip_large", gl_strip_large_set); CHKERRQ(ierr);
   ierr = PISMOptionsIsSet("-scale_subgl", "scale_subgl", scale_subgl_set); CHKERRQ(ierr);
+  ierr = PISMOptionsIsSet("-scale_subgl_univ", "scale_subgl_univ", scale_subgl_univ_set); CHKERRQ(ierr);
+
+  ierr = PISMOptionsIsSet("-melt1side", "melt1side", melt1side_set); CHKERRQ(ierr);
 
   ierr = bed_topography->get_array(vbed); CHKERRQ(ierr);
   ierr = mask_array->get_array(vmask); CHKERRQ(ierr);
   ierr = gl_mask_array->get_array(vgl_mask); CHKERRQ(ierr);
   // inserted
 
-  ierr = result.begin_access(); CHKERRQ(ierr);
-
   if (meltrate_set) {
 
     meltrate = convert(mymeltrate,"m year-1","m s-1");
-    // meltrate = convert(mymeltrate,"m year-1","m s-1");
-    ierr = result.set(meltrate); CHKERRQ(ierr);
 
+    if (melt1side_set) {
+      // ierr = result.set(meltrate); CHKERRQ(ierr);
+      ierr = result.begin_access(); CHKERRQ(ierr);
+	for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
+	  for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
+	    // if (i < 1) {
+	    if (i < ((grid.Mx - 1)/2)) {
+	      result(i,j) = 0.0;
+	      // ierr = verbPrintf(2, grid.com, "i = %i \n", i); CHKERRQ(ierr);
+	    }
+	    else {
+	      result(i,j) = meltrate;
+	    }
+	  }
+	}
+	ierr = result.end_access(); CHKERRQ(ierr);
+    } else {
+      ierr = result.set(meltrate); CHKERRQ(ierr);
+    }
   } 
+
   if (scale_bmr_gl_set) {
+    PetscInt GHOSTS = 0;
+    ierr = result.begin_access(); CHKERRQ(ierr);
     // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
-    for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
-      for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
+    for (PetscInt i=grid.xs - GHOSTS; i<grid.xs+grid.xm + GHOSTS; ++i) {
+      for (PetscInt j=grid.ys - GHOSTS; j<grid.ys+grid.ym + GHOSTS; ++j) {
+    // for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
+    //   for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
 
 	if (gl_strip_set) {
 	  if (vmask[i][j] == 3 && (vmask[i+1][j] == 2 || vmask[i-1][j] == 2 || 
@@ -180,8 +203,23 @@ PetscErrorCode POConstant::shelf_base_mass_flux(IceModelVec2S &result) {
 	    // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
 	  }
 	}
+	if (scale_subgl_univ_set && vgl_mask[i][j] < 1 && vgl_mask[i][j] > 0) {
+	  // scale bmr at partly floating/grounded ice (i.e. where gl is interpolated) 
+	  // where topg is beneath threshold
+	  if (vbed[i][j] < topg_thresh) {
+	    result(i,j) = bmr_gl_fact * result(i,j);	    
+	    // result(i,j) = bmr_gl_fact * result(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
+	  }
+	}
+	// If (melt1side_set) {	
+	//   if (i < grid.xs+grid.xm/2.0) {
+	//     result(i,j) = 0.0;
+	//   }
+	// }
       }
     }
+    ierr = result.end_access(); CHKERRQ(ierr);
   }
 
     // commented

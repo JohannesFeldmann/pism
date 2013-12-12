@@ -239,7 +239,8 @@ PetscErrorCode IceModel::createVecs() {
   }
   
   if (config.get_flag("sub_groundingline")) {
-    ierr = gl_mask.create(grid, "gl_mask", false); CHKERRQ(ierr);
+    ierr = gl_mask.create(grid, "gl_mask", true, 2); CHKERRQ(ierr);
+    // ierr = gl_mask.create(grid, "gl_mask", false); CHKERRQ(ierr);
     ierr = gl_mask.set_attrs("internal",
                                      "mask specifying grounding line position",
                                      "", ""); CHKERRQ(ierr);
@@ -396,6 +397,24 @@ PetscErrorCode IceModel::createVecs() {
                                   "deviatoric shear stress",
                                   "Pa", ""); CHKERRQ(ierr);
     ierr = variables.add(txy); CHKERRQ(ierr);
+  }
+
+  if (config.get_flag("do_buttratio_calc")==true) {
+    ierr = Sn.create(grid, "Sn", true); CHKERRQ(ierr);
+    ierr = Sn.set_attrs("internal",
+                                  "normal buttressing ratio",
+                                  "", ""); CHKERRQ(ierr);
+    ierr = variables.add(Sn); CHKERRQ(ierr);
+    ierr = St.create(grid, "St", true); CHKERRQ(ierr);
+    ierr = St.set_attrs("internal",
+                                  "tangential buttressing ratio",
+                                  "", ""); CHKERRQ(ierr);
+    ierr = variables.add(St); CHKERRQ(ierr);
+    ierr = Smag.create(grid, "Smag", true); CHKERRQ(ierr);
+    ierr = Smag.set_attrs("internal",
+                                  "magnitude of buttressing ratio",
+                                  "", ""); CHKERRQ(ierr);
+    ierr = variables.add(Smag); CHKERRQ(ierr);
   }
 
   if (config.get_flag("do_eigen_calving") == true) {
@@ -733,7 +752,6 @@ PetscErrorCode IceModel::step(bool do_mass_continuity,
   char tempstr[5];  snprintf(tempstr,5," %c", adaptReasonFlag);
   stdout_flags += tempstr;
 
-  ierr = stress_balance->get_2D_stresses(txx, tyy, txy); CHKERRQ(ierr);
 
 #if (PISM_DEBUG==1)
   ierr = variables.check_for_nan(); CHKERRQ(ierr);

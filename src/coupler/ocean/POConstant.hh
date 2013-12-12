@@ -46,7 +46,7 @@ protected:
   IceModelVec2S *ice_thickness,*bed_topography,*mask_array,*gl_mask_array;	// is not owned by this class
   NCSpatialVariable shelfbmassflux, shelfbtemp;
   vector<double> scalearray;
-  bool meltrate_set, scale_bmr_gl_set, gl_strip_set, gl_strip_large_set, scale_subgl_set;
+  bool meltrate_set, scale_bmr_gl_set, gl_strip_set, gl_strip_large_set, scale_subgl_set, scale_subgl_univ_set, melt1side_set;
   PetscReal mymeltrate;
 };
 

@@ -211,7 +211,7 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
     ierr = vMask.begin_access(); CHKERRQ(ierr);
 
     const bool sub_gl = config.get_flag("sub_groundingline");
-    bool scale_bmr_gl_set, scale_subgl_set;
+    bool scale_bmr_gl_set, scale_subgl_set, scale_subgl_univ_set;
     vector<double> scalearray(2);
 
     if (sub_gl){
@@ -222,6 +222,7 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
 				scalearray, scale_bmr_gl_set); CHKERRQ(ierr);
 
     ierr = PISMOptionsIsSet("-scale_subgl", "scale_subgl", scale_subgl_set); CHKERRQ(ierr);
+    ierr = PISMOptionsIsSet("-scale_subgl_univ", "scale_subgl_univ", scale_subgl_univ_set); CHKERRQ(ierr);
 
     PetscReal bmr_gl_fact = scalearray[0], topg_thresh = scalearray[1];
     //inserted
@@ -437,6 +438,11 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
 
 	if (sub_gl) {
 	  if (scale_bmr_gl_set && scale_subgl_set && mask.grounded(i,j) && 
+	      gl_mask(i,j) < 1 && gl_mask(i,j) > 0 && vbed(i,j) < topg_thresh) {
+	    basalMeltRate[i][j] = shelfbmassflux(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl PIG!!! \n"); CHKERRQ(ierr);
+	  }
+	  if (scale_bmr_gl_set && scale_subgl_univ_set && 
 	      gl_mask(i,j) < 1 && gl_mask(i,j) > 0 && vbed(i,j) < topg_thresh) {
 	    basalMeltRate[i][j] = shelfbmassflux(i,j);	    
 	    // ierr = verbPrintf(2, grid.com, "scale_subgl PIG!!! \n"); CHKERRQ(ierr);

@@ -750,6 +750,12 @@ PetscErrorCode set_config_from_options(MPI_Comm /*com*/, NCConfigVariable &confi
   // new driving stress
   ierr = config.flag_from_option("no_new_ds", "avoid_new_drivingstress"); CHKERRQ(ierr);
 
+  // calculation of buttressing ratio
+  ierr = config.flag_from_option("sigma_calc", "do_sigma_calc"); CHKERRQ(ierr);
+
+  // calculation of buttressing ratio
+  ierr = config.flag_from_option("buttratio_calc", "do_buttratio_calc"); CHKERRQ(ierr);
+
   return 0;
 }
 
