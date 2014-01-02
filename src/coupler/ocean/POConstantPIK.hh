@@ -42,13 +42,15 @@ public:
                                           PISM_IO_Type nctype);
   virtual PetscErrorCode write_variables(set<string> vars, string filename);
 protected:
-  IceModelVec2S *ice_thickness;	// is not owned by this class
+  IceModelVec2S *ice_thickness,*bed_topography,*mask_array,*gl_mask_array;	// is not owned by this class
   NCSpatialVariable shelfbmassflux, shelfbtemp;
-  vector<double> waterTemp_array;
-  bool waterTemp_PIG_TG_set;
+  vector<double> waterTemp_array, scalearray;
+  bool waterTemp_PIG_TG_set, scale_bmr_gl_set, gl_strip_set, gl_strip_large_set, scale_subgl_set;
   PetscReal T_water_PIG_n, T_water_PIG_s, T_water_TG;
   PetscScalar dx;
-  PetscInt innerPIGbound, TGbound;
+  PetscInt innerPIGbound, TGbound, nomelt_PIGn, 
+    nomelt_TGw, nomelt_TGs, nomelt_PIGTGe, 
+    nomelt_PIGTGw, nomelt_PIGTGn, nomelt_PIGTGs;
 };
 
 #endif /* _POCONSTANTPIK_H_ */

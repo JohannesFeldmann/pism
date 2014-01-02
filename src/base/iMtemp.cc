@@ -206,6 +206,27 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
       SETERRQ(grid.com, 3,"PISM ERROR: PISMBedThermalUnit* btu == PETSC_NULL in temperatureStep()");
     }
 
+    ierr = vbed.begin_access(); CHKERRQ(ierr);
+    ierr = vMask.begin_access(); CHKERRQ(ierr);
+
+    PetscScalar dx = grid.dx;
+
+    const bool sub_gl = config.get_flag("sub_groundingline");
+    bool scale_bmr_gl_set, scale_subgl_set;
+    vector<double> scalearray(3);
+  
+    PetscScalar innerPIGbound = int((64*5000)/dx + 0.5); // same as innerPIGbound in POConstantPIK.cc
+    PetscScalar TGbound = int((82*5000)/dx + 0.5); // same as TGbound in POConstantPIK.cc
+    if (sub_gl){
+      ierr = gl_mask.begin_access(); CHKERRQ(ierr);
+    }
+    ierr = PISMOptionsRealArray("-scale_bmr_gl", "bmr_gl_fact, pig_topg_thresh, tg_topg_thresh",
+				scalearray, scale_bmr_gl_set); CHKERRQ(ierr);
+
+    ierr = PISMOptionsIsSet("-scale_subgl", "scale_subgl", scale_subgl_set); CHKERRQ(ierr);
+
+    PetscReal bmr_gl_fact = scalearray[0], PIG_topg_thresh = scalearray[1], TG_topg_thresh = scalearray[2];
+
     ierr = artm.begin_access(); CHKERRQ(ierr);
     ierr = shelfbmassflux.begin_access(); CHKERRQ(ierr);
     ierr = shelfbtemp.begin_access(); CHKERRQ(ierr);
@@ -393,10 +414,31 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
           bwat[i][j] = PetscMin(bwat_max, PetscMax(bwatnew, 0.0));
         }
 
+	if (sub_gl) {
+	  if (scale_bmr_gl_set && scale_subgl_set && mask.grounded(i,j) && 
+	      gl_mask(i,j) < 1 && gl_mask(i,j) > 0 && (j > TGbound && vbed(i,j) < PIG_topg_thresh)) {
+	    basalMeltRate[i][j] = shelfbmassflux(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl PIG!!! \n"); CHKERRQ(ierr);
+	  } else if (scale_bmr_gl_set && scale_subgl_set && mask.grounded(i,j) && 
+		     gl_mask(i,j) < 1 && gl_mask(i,j) > 0 && (j <= TGbound && vbed(i,j) < TG_topg_thresh)) {
+	    basalMeltRate[i][j] = shelfbmassflux(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl TG!!! \n"); CHKERRQ(ierr);
+	  }
+	  else {
+	    basalMeltRate[i][j] = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * basalMeltRate[i][j];
+	  }
+	}
     }
   }
 
   if (myLowTempCount > maxLowTempCount) { SETERRQ(grid.com, 1,"too many low temps"); }
+
+  if (sub_gl){
+    ierr = gl_mask.end_access(); CHKERRQ(ierr);
+   }
+
+  ierr = vbed.end_access(); CHKERRQ(ierr);
+  ierr = vMask.end_access(); CHKERRQ(ierr);
 
   ierr = vH.end_access(); CHKERRQ(ierr);
   ierr = vMask.end_access(); CHKERRQ(ierr);

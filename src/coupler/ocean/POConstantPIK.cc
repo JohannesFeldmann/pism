@@ -49,6 +49,13 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
   ice_thickness = dynamic_cast<IceModelVec2S*>(vars.get("land_ice_thickness"));
   if (!ice_thickness) { SETERRQ(grid.com, 1, "ERROR: ice thickness is not available"); }
 
+  bed_topography = dynamic_cast<IceModelVec2S*>(vars.get("topg"));
+  if (!bed_topography) { SETERRQ(grid.com, 1, "ERROR: bed topography is not available"); }
+  mask_array = dynamic_cast<IceModelVec2S*>(vars.get("mask"));
+  if (!mask_array) { SETERRQ(grid.com, 1, "ERROR: mask not available"); }
+  gl_mask_array = dynamic_cast<IceModelVec2S*>(vars.get("gl_mask"));
+  if (!gl_mask_array) { SETERRQ(grid.com, 1, "ERROR: gl_mask not available"); }
+
   ierr = PISMOptionsIsSet("-use_waterTemp_PIG_TG", waterTemp_PIG_TG_set); CHKERRQ(ierr); 
 
   if (waterTemp_PIG_TG_set) {
@@ -147,10 +154,40 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
     dx = grid.dx;
     innerPIGbound = int((64*5000)/dx + 0.5); //addition of 0.5 is because C++ automatically rounds down
     TGbound = int((82*5000)/dx + 0.5);
+
+    nomelt_PIGn = int((53*5000)/dx + 0.5);
+    nomelt_TGw = int((58*5000)/dx + 0.5);
+    nomelt_TGs = int((86*5000)/dx + 0.5);
+    nomelt_PIGTGn = int((71*5000)/dx + 0.5);
+    nomelt_PIGTGe = int((93*5000)/dx + 0.5);
+    nomelt_PIGTGs = int((75*5000)/dx + 0.5);
+    nomelt_PIGTGw = int((78*5000)/dx + 0.5);
   }
 
-  PetscScalar **H;
 
+  scalearray.resize(3);
+  ierr = PISMOptionsRealArray("-scale_bmr_gl", "bmr_gl_fact, pig_topg_thresh, tg_topg_thresh",
+				scalearray, scale_bmr_gl_set); CHKERRQ(ierr);
+
+  PetscScalar **vbed;
+  PetscScalar **vmask;
+  PetscScalar **vgl_mask;
+  PetscReal bmr_gl_fact = scalearray[0], PIG_topg_thresh = scalearray[1], TG_topg_thresh = scalearray[2];
+  const bool sub_gl = config.get_flag("sub_groundingline");
+
+  ierr = PISMOptionsIsSet("-gl_strip", "gl_strip", gl_strip_set); CHKERRQ(ierr);
+  ierr = PISMOptionsIsSet("-gl_strip_large", "gl_strip_large", gl_strip_large_set); CHKERRQ(ierr);
+  ierr = PISMOptionsIsSet("-scale_subgl", "scale_subgl", scale_subgl_set); CHKERRQ(ierr);
+
+  ierr = bed_topography->get_array(vbed); CHKERRQ(ierr);
+  ierr = mask_array->get_array(vmask); CHKERRQ(ierr);
+  ierr = gl_mask_array->get_array(vgl_mask); CHKERRQ(ierr);
+
+  // if (sub_gl){
+    // ierr = gl_mask.begin_access(); CHKERRQ(ierr);
+   // }
+    
+  PetscScalar **H;
 
   ierr = ice_thickness->get_array(H);   CHKERRQ(ierr);
   ierr = result.begin_access(); CHKERRQ(ierr);
@@ -163,40 +200,101 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
       // Pressure Melting Temperature, see beckmann_goosse03 eq. 2 for
       // details]
       PetscScalar shelfbaseelev = - (rho_ice / rho_ocean) * H[i][j],
-        T_f= 273.15 + (0.0939 -0.057 * ocean_salinity + 7.64e-4 * shelfbaseelev);
+        T_f= 273.15 + (0.0939 -0.057 * ocean_salinity + 7.64e-4 * shelfbaseelev),
+	oceanheatflux = 0;
       // add 273.15 to get it in Kelvin
 
-	if(waterTemp_PIG_TG_set && j > TGbound){
-	  if(i <= innerPIGbound){
-	    T_ocean = 273.15 + waterTemp_array[0];
-	    // T_ocean = 273.15 + T_water_PIG_n;
-	  }
-	  if(i > innerPIGbound){
-	    T_ocean = 273.15 + waterTemp_array[1];
-	    // T_ocean = 273.15 + T_water_PIG_s;
-	  }
+      if(waterTemp_PIG_TG_set && j > TGbound){
+	if(i <= innerPIGbound){
+	  T_ocean = 273.15 + waterTemp_array[0];
+	  // T_ocean = 273.15 + T_water_PIG_n;
 	}
-	if(waterTemp_PIG_TG_set && j <= TGbound){
-	  T_ocean = 273.15 + waterTemp_array[2];
-	  // T_ocean = 273.15 + T_water_TG;
+	if(i > innerPIGbound){
+	  T_ocean = 273.15 + waterTemp_array[1];
+	  // T_ocean = 273.15 + T_water_PIG_s;
 	}
+      }
+      if(waterTemp_PIG_TG_set && j <= TGbound){
+	T_ocean = 273.15 + waterTemp_array[2];
+	// T_ocean = 273.15 + T_water_TG;
+      }
 
       // compute ocean_heat_flux according to beckmann_goosse03
       // positive, if T_oc > T_ice ==> heat flux FROM ocean TO ice
-      PetscScalar oceanheatflux = meltfactor * rho_ocean * c_p_ocean * gamma_T * (T_ocean - T_f); // in W/m^2
+      if(waterTemp_PIG_TG_set && i <= nomelt_PIGn){
+	oceanheatflux = 0;
+      }
+      else if(waterTemp_PIG_TG_set && j <= nomelt_TGw && i <= nomelt_TGs){
+	oceanheatflux = 0;
+	// PetscScalar oceanheatflux = 0;
+      }
+      else if(waterTemp_PIG_TG_set && i >= nomelt_PIGTGn && i <= nomelt_PIGTGs && j >= nomelt_PIGTGw && j <= nomelt_PIGTGe){
+	oceanheatflux = 0;
+      } else{
+        oceanheatflux = meltfactor * rho_ocean * c_p_ocean * gamma_T * (T_ocean - T_f); // in W/m^2
+      }
       // TODO: T_ocean -> field!
 
       // shelfbmassflux is positive if ice is freezing on; here it is always negative:
       // same sign as OceanHeatFlux... positive if massflux FROM ice TO ocean
       result(i,j) = oceanheatflux / (L * rho_ice); // m s-1
 
+      if (scale_bmr_gl_set) {
+	if (gl_strip_set) {
+	  if (vmask[i][j] == 3 && (vmask[i+1][j] == 2 || vmask[i-1][j] == 2 || 
+				  vmask[i][j-1] == 2 || vmask[i][j-1] == 2 ||
+				  vmask[i+1][j+1] == 2 || vmask[i+1][j-1] == 2 || 
+				  vmask[i-1][j+1] == 2 || vmask[i-1][j-1] == 2)) {
+	    // scale bmr at thin strip of 1 grid cell width along grounding line where topg is beneath threshold
+	    if (j > TGbound && vbed[i][j] < PIG_topg_thresh) {
+	      result(i,j) = bmr_gl_fact * result(i,j);	    
+	    }
+	    if (j <= TGbound && vbed[i][j] < TG_topg_thresh) {
+	      result(i,j) = bmr_gl_fact * result(i,j);	    
+	    }					       
+	  }
+      	}
+	else if (gl_strip_large_set) {
+	  if (vmask[i][j] == 3 && (vmask[i+1][j] == 2 || vmask[i-1][j] == 2 || 
+				  vmask[i][j-1] == 2 || vmask[i][j-1] == 2 ||
+				  vmask[i+1][j+1] == 2 || vmask[i+1][j-1] == 2 || 
+				  vmask[i-1][j+1] == 2 || vmask[i-1][j-1] == 2 ||
+				  vmask[i+2][j] == 2 || vmask[i-2][j] == 2 || 
+				  vmask[i][j-2] == 2 || vmask[i][j-2] == 2)) {
+	    // scale bmr at thin strip of 2 grid cells width along grounding line where topg is beneath threshold
+	    if (j > TGbound && vbed[i][j] < PIG_topg_thresh) {
+	      result(i,j) = bmr_gl_fact * result(i,j);	    
+	    }
+	    if (j <= TGbound && vbed[i][j] < TG_topg_thresh) {
+	      result(i,j) = bmr_gl_fact * result(i,j);	    
+	    }					       
+	  }
+      	}
+	if (scale_subgl_set && vmask[i][j] == 2 && vgl_mask[i][j] < 1 && vgl_mask[i][j] > 0) {
+	  // scale bmr at grounded but partly floating ice (i.e. where gl is interpolated) 
+	  // where topg is beneath threshold
+	  if (j > TGbound && vbed[i][j] < PIG_topg_thresh) {
+	    result(i,j) = bmr_gl_fact * result(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
+	  }
+	  if (j <= TGbound && vbed[i][j] < TG_topg_thresh) {
+	    result(i,j) = bmr_gl_fact * result(i,j);	    
+	    // ierr = verbPrintf(2, grid.com, "scale_subgl!!! \n"); CHKERRQ(ierr);
+	  }
+	}
+      }
     }
   }
 
   ierr = ice_thickness->end_access(); CHKERRQ(ierr);
+
+  ierr = bed_topography->end_access(); CHKERRQ(ierr);
+  ierr = mask_array->end_access(); CHKERRQ(ierr);
+  ierr = gl_mask_array->end_access(); CHKERRQ(ierr);
+    
   ierr = result.end_access(); CHKERRQ(ierr);
 
-  return 0;
+return 0;
 }
 
 void POConstantPIK::add_vars_to_output(string keyword, map<string,NCSpatialVariable> &result) {
