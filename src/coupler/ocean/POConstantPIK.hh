@@ -44,11 +44,11 @@ public:
 protected:
   IceModelVec2S *ice_thickness,*mask_array;	// is not owned by this class
   NCSpatialVariable shelfbmassflux, shelfbtemp;
-  vector<double> waterTemp_array;
+  vector<double> waterTemp_array, meltfactor_array;
   PetscScalar dx;
-  PetscReal T_water_PIG_n, T_water_PIG_s, T_water_TG;
+  PetscReal T_water_PIGn, T_water_PIGs, T_water_TG, meltfactor_PIGn, meltfactor_PIGs, meltfactor_TG;
   PetscInt innerPIGbound, TGbound;
-  bool melt1side_set, offset_meltrate_set, offset_meltrate_PIG_TG_set, add_constant_bmr_set, waterTemp_PIG_TG_set;
+  bool melt1side_set, offset_meltrate_set, offset_meltrate_PIG_TG_set, add_constant_bmr_set, waterTemp_PIG_TG_set, meltfactor_PIG_TG_set;
 };
 
 #endif /* _POCONSTANTPIK_H_ */

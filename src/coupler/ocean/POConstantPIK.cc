@@ -67,7 +67,7 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
     waterTemp_array[1] = -1.7;
     waterTemp_array[2] = -1.7;
     
-    ierr = PISMOptionsRealArray("-use_waterTemp_PIG_TG", "waterTemp_PIG_n, waterTemp_PIG_s, waterTemp_TG",
+    ierr = PISMOptionsRealArray("-use_waterTemp_PIG_TG", "waterTemp_PIGn, waterTemp_PIGs, waterTemp_TG",
                               waterTemp_array, waterTemp_PIG_TG_set); CHKERRQ(ierr);
                              
     ierr = verbPrintf(2, grid.com,
@@ -78,6 +78,30 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
       PetscPrintf(grid.com,
                 "PISM ERROR: option -use_waterTemp_PIG_TG requires a comma-separated list with 3 numbers; got %d\n",
                 waterTemp_array.size());
+      PISMEnd();
+    }                      
+  }
+
+  ierr = PISMOptionsIsSet("-use_meltfactor_PIG_TG", meltfactor_PIG_TG_set); CHKERRQ(ierr); 
+
+  if (meltfactor_PIG_TG_set) {
+    meltfactor_array.resize(3);
+    // default values:
+    meltfactor_array[0] = -1.7; 
+    meltfactor_array[1] = -1.7;
+    meltfactor_array[2] = -1.7;
+    
+    ierr = PISMOptionsRealArray("-use_meltfactor_PIG_TG", "meltfactor_PIGn, meltfactor_PIGs, meltfactor_TG",
+                              meltfactor_array, meltfactor_PIG_TG_set); CHKERRQ(ierr);
+                             
+    ierr = verbPrintf(2, grid.com,
+                      "* Melt factors for PIGn, PIGs and TG are are set separately to\n"
+                      "     meltfactor_PIG_n=%f K, meltfactor_PIG_s=%f K, meltfactor_TG=%f K \n", meltfactor_array[0], meltfactor_array[1], meltfactor_array[2]); CHKERRQ(ierr);
+                              
+    if (meltfactor_array.size() != 3) {
+      PetscPrintf(grid.com,
+                "PISM ERROR: option -use_meltfactor_PIG_TG requires a comma-separated list with 3 numbers; got %d\n",
+                meltfactor_array.size());
       PISMEnd();
     }                      
   }
@@ -149,16 +173,9 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
   }
 
   if (waterTemp_PIG_TG_set) {
-    T_water_PIG_n = waterTemp_array[0];
-    T_water_PIG_s = waterTemp_array[1];
+    T_water_PIGn = waterTemp_array[0];
+    T_water_PIGs = waterTemp_array[1];
     T_water_TG = waterTemp_array[2];
-    // use boundaries for PIG north and south (64) and TG (82) which were defined
-    // for 5km and scale to used resolution
-    dx = grid.dx;
-    innerPIGbound = int((50*5000)/dx + 0.5); //addition of 0.5 is because C++ automatically rounds down
-    // TGbound = int((35*5000)/dx + 0.5);
-    TGbound = int((25*5000)/dx + 0.5);
-
     // nomelt_PIGn = int((53*5000)/dx + 0.5);
     // nomelt_TGw = int((58*5000)/dx + 0.5);
     // nomelt_TGs = int((86*5000)/dx + 0.5);
@@ -167,6 +184,19 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
     // nomelt_PIGTGs = int((75*5000)/dx + 0.5);
     // nomelt_PIGTGw = int((78*5000)/dx + 0.5);
   }
+
+  if (meltfactor_PIG_TG_set) {
+    meltfactor_PIGn = meltfactor_array[0];
+    meltfactor_PIGs = meltfactor_array[1];
+    meltfactor_TG = meltfactor_array[2];
+  }			
+
+  // use boundaries for PIG north and south (64) and TG (82) which were defined
+  // for 5km and scale to used resolution
+  dx = grid.dx;
+  innerPIGbound = int((50*5000)/dx + 0.5); //addition of 0.5 is because C++ automatically rounds down
+  // TGbound = int((35*5000)/dx + 0.5);
+  TGbound = int((25*5000)/dx + 0.5);
 
   PetscReal add_constant_bmr = 0.0;
   ierr = PISMOptionsReal("-add_constant_bmr",
@@ -194,17 +224,20 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
 
       if(waterTemp_PIG_TG_set && j > TGbound && j < 100){
 	if(i <= innerPIGbound){
-	  T_ocean = 273.15 + T_water_PIG_n;
+	  T_ocean = 273.15 + T_water_PIGn;
 	  // T_ocean = 273.15 + waterTemp_array[0];
+	  meltfactor = meltfactor_PIGn;
 	}
 	if(i > innerPIGbound){
-	  T_ocean = 273.15 + waterTemp_array[1];
-	  // T_ocean = 273.15 + T_water_PIG_s;
+	  T_ocean = 273.15 + T_water_PIGs;
+	  // T_ocean = 273.15 + waterTemp_array[1];
+	  meltfactor = meltfactor_PIGs;
 	}
       }
       if(waterTemp_PIG_TG_set && j <= TGbound){
-	T_ocean = 273.15 + waterTemp_array[2];
-	// T_ocean = 273.15 + T_water_TG;
+	T_ocean = 273.15 + T_water_TG;
+	// T_ocean = 273.15 + waterTemp_array[2];
+	meltfactor = meltfactor_TG;
       }
 
       // compute ocean_heat_flux according to beckmann_goosse03
@@ -243,9 +276,9 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
   ierr = PISMGlobalMin(&result_min_PIGs, &result_min_PIGs_global, grid.com); CHKERRQ(ierr);
   ierr = PISMGlobalMin(&result_min_TG, &result_min_TG_global, grid.com); CHKERRQ(ierr);
 
-  ierr = PetscPrintf(PETSC_COMM_SELF,"!!! PISM_INFO: result_min_PIGn=%12.2f m/a\n",result_min_PIGn_global*secpera); CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_SELF,"!!! PISM_INFO: result_min_PIGs=%12.2f m/a\n",result_min_PIGs_global*secpera); CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_SELF,"!!! PISM_INFO: result_min_TG=%12.2f m/a\n",result_min_TG_global*secpera); CHKERRQ(ierr);
+  // ierr = PetscPrintf(PETSC_COMM_SELF,"!!! PISM_INFO: result_min_PIGn=%12.2f m/a\n",result_min_PIGn_global*secpera); CHKERRQ(ierr);
+  // ierr = PetscPrintf(PETSC_COMM_SELF,"!!! PISM_INFO: result_min_PIGs=%12.2f m/a\n",result_min_PIGs_global*secpera); CHKERRQ(ierr);
+  // ierr = PetscPrintf(PETSC_COMM_SELF,"!!! PISM_INFO: result_min_TG=%12.2f m/a\n",result_min_TG_global*secpera); CHKERRQ(ierr);
 
   for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
     for (PetscInt j=grid.ys; j<grid.ys+grid.ym; ++j) {
