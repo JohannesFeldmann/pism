@@ -96,12 +96,35 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
                              
     ierr = verbPrintf(2, grid.com,
                       "* Melt factors for PIGn, PIGs and TG are are set separately to\n"
-                      "     meltfactor_PIG_n=%f K, meltfactor_PIG_s=%f K, meltfactor_TG=%f K \n", meltfactor_array[0], meltfactor_array[1], meltfactor_array[2]); CHKERRQ(ierr);
+                      "     meltfactor_PIG_n=%f, meltfactor_PIG_s=%f, meltfactor_TG=%f\n", meltfactor_array[0], meltfactor_array[1], meltfactor_array[2]); CHKERRQ(ierr);
                               
     if (meltfactor_array.size() != 3) {
       PetscPrintf(grid.com,
                 "PISM ERROR: option -use_meltfactor_PIG_TG requires a comma-separated list with 3 numbers; got %d\n",
                 meltfactor_array.size());
+      PISMEnd();
+    }                      
+  }
+
+  ierr = PISMOptionsIsSet("-use_boundary_PIG_TG", boundary_PIG_TG_set); CHKERRQ(ierr); 
+
+  if (boundary_PIG_TG_set) {
+    boundary_array.resize(2);
+    // default values:
+    boundary_array[0] = 50; 
+    boundary_array[1] = 25;
+    
+    ierr = PISMOptionsRealArray("-use_boundary_PIG_TG", "boundary_innerPIG, boundary_TG",
+                              boundary_array, boundary_PIG_TG_set); CHKERRQ(ierr);
+                             
+    ierr = verbPrintf(2, grid.com,
+                      "* Boundaries for inner PIG, and TG ice shelves to\n"
+                      "     boundary_innerPIG=%i, boundary_TG=%i \n", boundary_array[0], boundary_array[1]); CHKERRQ(ierr);
+                              
+    if (boundary_array.size() != 2) {
+      PetscPrintf(grid.com,
+                "PISM ERROR: option -use_boundary_PIG_TG requires a comma-separated list with 2 numbers; got %d\n",
+                boundary_array.size());
       PISMEnd();
     }                      
   }
@@ -191,12 +214,19 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
     meltfactor_TG = meltfactor_array[2];
   }			
 
-  // use boundaries for PIG north and south (64) and TG (82) which were defined
-  // for 5km and scale to used resolution
-  dx = grid.dx;
-  innerPIGbound = int((50*5000)/dx + 0.5); //addition of 0.5 is because C++ automatically rounds down
-  // TGbound = int((35*5000)/dx + 0.5);
-  TGbound = int((25*5000)/dx + 0.5);
+  if (waterTemp_PIG_TG_set || meltfactor_PIG_TG_set) {
+    // use boundaries for PIG north and south (64) and TG (82) which were defined
+    // for 5km and scale to used resolution
+    dx = grid.dx;
+    innerPIGbound = int((50*5000)/dx + 0.5); //addition of 0.5 is because C++ automatically rounds down
+    // TGbound = int((35*5000)/dx + 0.5);
+    TGbound = int((25*5000)/dx + 0.5);
+  }
+
+  if (boundary_PIG_TG_set) {
+    innerPIGbound = int((boundary_array[0]*5000)/dx + 0.5);
+    TGbound = int((boundary_array[1]*5000)/dx + 0.5);
+  }			
 
   PetscReal add_constant_bmr = 0.0;
   ierr = PISMOptionsReal("-add_constant_bmr",
@@ -222,7 +252,7 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
         T_f= 273.15 + (0.0939 -0.057 * ocean_salinity + 7.64e-4 * shelfbaseelev);
       // add 273.15 to get it in Kelvin
 
-      if(waterTemp_PIG_TG_set && j > TGbound && j < 100){
+      if(waterTemp_PIG_TG_set && j > TGbound){
 	if(i <= innerPIGbound){
 	  T_ocean = 273.15 + T_water_PIGn;
 	  // T_ocean = 273.15 + waterTemp_array[0];
@@ -255,7 +285,7 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
 	}
       }
 
-      if (offset_meltrate_PIG_TG_set && vmask[i][j] == 3 && j > TGbound && j < 100) {
+      if (offset_meltrate_PIG_TG_set && vmask[i][j] == 3 && j > TGbound) {
 	if(i <= innerPIGbound) {
 	  result_min_PIGn = PetscMax(0,PetscMin(result_min_PIGn,result(i,j)));
 	}
@@ -289,7 +319,7 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
 	}
       }
 
-      if (offset_meltrate_PIG_TG_set && j > TGbound && j < 100) {
+      if (offset_meltrate_PIG_TG_set && j > TGbound) {
 	if(i <= innerPIGbound) {
 	  result(i,j) = result(i,j) - result_min_PIGn_global;
 	}
