@@ -119,7 +119,7 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
                              
     ierr = verbPrintf(2, grid.com,
                       "* Boundaries for inner PIG, and TG ice shelves to\n"
-                      "     boundary_innerPIG=%i, boundary_TG=%i \n", boundary_array[0], boundary_array[1]); CHKERRQ(ierr);
+                      "     boundary_innerPIG=%.0f, boundary_TG=%.0f \n", boundary_array[0], boundary_array[1]); CHKERRQ(ierr);
                               
     if (boundary_array.size() != 2) {
       PetscPrintf(grid.com,
