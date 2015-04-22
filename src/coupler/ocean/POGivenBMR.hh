@@ -65,8 +65,10 @@ public:
 
 protected:
   string reference;
-  bool adjust_bmr_set, bmr_per_K_set;
-  PetscReal ref_openocean_shelfthk, meltrate_increase_per_K;
+  bool adjust_bmr_set, bmr_per_K_set, scale_bmr_set, jbound_bmr_set;
+  PetscReal ref_openocean_shelfthk, meltrate_increase_per_K, sf;
+  // PetscInt jb;
+  vector<int> jb_array;
   IceModelVec2S *ice_thickness, melt_ref_thk;
   NCSpatialVariable shelfbtemp, shelfbmassflux;
 };

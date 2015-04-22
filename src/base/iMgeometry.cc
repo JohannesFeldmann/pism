@@ -750,6 +750,14 @@ PetscErrorCode IceModel::massContExplicitStep() {
         proc_Href_to_H_flux += Href_to_H_flux;
       }
 
+      // additional output
+      if (vHnew(i,j) > 5000.0) {
+	ierr = PetscSynchronizedPrintf(grid.com, 
+				       "\nPISM-PIK INFO: Ice thickness (%7.4f m) at [rank %d]  i = %d, j = %d \n",
+				       vHnew(i,j), grid.rank, i, j);
+      }
+      // additional output
+
     } // end of the inner (j) for loop
   } // end of the outer (i) for loop
 

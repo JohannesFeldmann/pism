@@ -74,6 +74,22 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
   ierr = melt_ref_thk.set_attr("history", ref_shelfbaseelev_history); CHKERRQ(ierr);
   //}
 
+  ierr = PISMOptionsReal("-scale_bmr", "Scaling factor for sub-shelf melt rate", sf, scale_bmr_set); CHKERRQ(ierr);
+
+  // vector<double> jb_array;
+  jb_array.resize(4);
+  // jb = 100;
+  jb_array[0]=0; jb_array[1]=100; jb_array[2]=0; jb_array[3]=100;
+
+  ierr = PISMOptionsIntArray("-jbound_bmr", "Boundary for sub-shelf melt rate scaling: i0,i1,j0,j1", jb_array, jbound_bmr_set); CHKERRQ(ierr);
+  // ierr = PISMOptionsInt("-jbound_bmr", "Boundary for sub-shelf melt rate scaling", jb, jbound_bmr_set); CHKERRQ(ierr);
+
+  if (scale_bmr_set) { 
+    ierr = verbPrintf(2, grid.com,
+                      "* Scaling factor for sub-shelf melt rate\n"
+                      "  is set for area %i<=i<=%i and %i<=j<=%i to sf=%f \n", jb_array[0],jb_array[1],jb_array[2],jb_array[3],sf); CHKERRQ(ierr);   
+  }
+
   return 0;
 }
 
@@ -148,6 +164,11 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
       //dT_pmp = beta_CC_grad * ( ref_shelfbaseelev - shelfbaseelev );
 
       result(i,j) = mass_flux(i,j) + dbmrdz/secpera * (shelfbaseelev - ref_shelfbaseelev) ;
+      
+      if (scale_bmr_set && i>=jb_array[0] && i<=jb_array[1] && j>=jb_array[2] && j<=jb_array[3]) {
+      // if (scale_bmr_set && j<jb) {
+	result(i,j) = sf*result(i,j);
+      }
 
      }
   }

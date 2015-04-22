@@ -172,6 +172,16 @@ PetscErrorCode IceModel::check_maximum_thickness() {
   int N = 0; 			// the number of new levels
 
   ierr = vH.range(H_min, H_max); CHKERRQ(ierr);
+  // additional output
+  ierr = PetscPrintf(grid.com,
+  		     "\n"
+  		     "PISM INFO: Max ice thickness (%7.4f m)\n",
+  		     H_max); CHKERRQ(ierr);
+  // ierr = PetscSynchronizedPrintf(grid.com, 
+  // 				 "\n"
+  // 				 "PISM-PIK INFO: Max ice thickness (%7.4f m) at [rank %d]  i = %d, j = %d \n",
+  // 				 H_max, grid.rank, i, j);
+  // additional output
   if (grid.Lz >= H_max) return 0;
 
   if (grid.initial_Mz == 0)

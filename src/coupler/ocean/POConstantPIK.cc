@@ -52,6 +52,9 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
   mask_array = dynamic_cast<IceModelVec2S*>(vars.get("mask"));
   if (!mask_array) { SETERRQ(grid.com, 1, "ERROR: mask not available"); }
 
+  bed_array = dynamic_cast<IceModelVec2S*>(vars.get("topg"));
+  if (!bed_array) { SETERRQ(grid.com, 1, "ERROR: topg is not available"); }
+
   // for symmetric (MISMIP-like) experiments: non-zero meltrates only at RHS of domain 
   ierr = PISMOptionsIsSet("-melt1side", "melt1side", melt1side_set); CHKERRQ(ierr);
   // field of melt rates reduced to have zero melt rates where thinnest ice (hopefully at ice shelf front)
@@ -87,9 +90,9 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
   if (meltfactor_PIG_TG_set) {
     meltfactor_array.resize(3);
     // default values:
-    meltfactor_array[0] = -1.7; 
-    meltfactor_array[1] = -1.7;
-    meltfactor_array[2] = -1.7;
+    meltfactor_array[0] = 0.15; 
+    meltfactor_array[1] = 0.15;
+    meltfactor_array[2] = 0.15;
     
     ierr = PISMOptionsRealArray("-use_meltfactor_PIG_TG", "meltfactor_PIGn, meltfactor_PIGs, meltfactor_TG",
                               meltfactor_array, meltfactor_PIG_TG_set); CHKERRQ(ierr);
@@ -129,6 +132,27 @@ PetscErrorCode POConstantPIK::init(PISMVars &vars) {
     }                      
   }
 
+  ierr = PISMOptionsIsSet("-no_melt_patch", no_melt_patch_set); CHKERRQ(ierr); 
+
+  if (no_melt_patch_set) {
+    // nomelt_PIGn = int((53*5000)/dx + 0.5);
+    // nomelt_TGw = int((58*5000)/dx + 0.5);
+    // nomelt_TGs = int((86*5000)/dx + 0.5);
+    nomelt_PIGTGn = 59;
+    nomelt_PIGTGe = 33;
+    // nomelt_PIGTGs = int((75*5000)/dx + 0.5);
+    // nomelt_PIGTGw = int((78*5000)/dx + 0.5);
+
+    ierr = verbPrintf(2, grid.com,
+                      "* Option -no_melt_patch set!\n"); CHKERRQ(ierr);
+  }
+
+  ierr = PISMOptionsIsSet("-topg_conf", topg_conf_set); CHKERRQ(ierr); 
+                          
+  if (topg_conf_set) {
+    topg_conf = -650;
+  }
+   
   return 0;
 }
 
@@ -199,13 +223,6 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
     T_water_PIGn = waterTemp_array[0];
     T_water_PIGs = waterTemp_array[1];
     T_water_TG = waterTemp_array[2];
-    // nomelt_PIGn = int((53*5000)/dx + 0.5);
-    // nomelt_TGw = int((58*5000)/dx + 0.5);
-    // nomelt_TGs = int((86*5000)/dx + 0.5);
-    // nomelt_PIGTGn = int((71*5000)/dx + 0.5);
-    // nomelt_PIGTGe = int((93*5000)/dx + 0.5);
-    // nomelt_PIGTGs = int((75*5000)/dx + 0.5);
-    // nomelt_PIGTGw = int((78*5000)/dx + 0.5);
   }
 
   if (meltfactor_PIG_TG_set) {
@@ -233,12 +250,16 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
                          "add constant to bmr field",
                          add_constant_bmr, add_constant_bmr_set); CHKERRQ(ierr);
 
-  PetscScalar **H, **vmask;
+  PetscScalar **H, **vmask, **bed;
   ierr = ice_thickness->get_array(H); CHKERRQ(ierr);
   ierr = mask_array->get_array(vmask); CHKERRQ(ierr);
+  ierr = bed_array->get_array(bed); CHKERRQ(ierr);
   ierr = result.begin_access(); CHKERRQ(ierr);
-
-  PetscScalar result_min = 10000.0, result_min_PIGs = 10000.0, result_min_PIGn = 10000.0, result_min_TG = 10000.0; 
+  
+  PetscScalar min_value=100.0;
+  // PetscScalar min_value=100.0e-5;
+  PetscScalar result_min = min_value, result_min_PIGs = min_value, result_min_PIGn = min_value, result_min_TG = min_value; 
+  // PetscScalar result_min = 10000.0, result_min_PIGs = 10000.0, result_min_PIGn = 10000.0, result_min_TG = 10000.0; 
   // set to very high value to make sure that it will be replaced by smaller value later
 
   for (PetscInt i=grid.xs; i<grid.xs+grid.xm; ++i) {
@@ -285,16 +306,32 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
 	}
       }
 
-      if (offset_meltrate_PIG_TG_set && vmask[i][j] == 3 && j > TGbound) {
-	if(i <= innerPIGbound) {
-	  result_min_PIGn = PetscMax(0,PetscMin(result_min_PIGn,result(i,j)));
-	}
-	if (i > innerPIGbound) {
-	  result_min_PIGs = PetscMax(0,PetscMin(result_min_PIGs,result(i,j)));
-	}
+      // if (offset_meltrate_PIG_TG_set && j > TGbound) {
+      // 	if(i <= innerPIGbound) {
+      // 	  result_min_PIGn = PetscMax(0,PetscMin(result_min_PIGn,result(i,j)));
+      // 	}
+      // 	if (i > innerPIGbound) {
+      // 	  result_min_PIGs = PetscMax(0,PetscMin(result_min_PIGs,result(i,j)));
+      // 	}
+      // }
+      // if (offset_meltrate_PIG_TG_set && j <= TGbound) {
+      // 	result_min_TG = PetscMax(0,PetscMin(result_min_TG,result(i,j)));
+      // }
+
+      if (offset_meltrate_PIG_TG_set && vmask[i][j] == 3 && j > TGbound && result(i,j) > 0) {
+      // if (offset_meltrate_PIG_TG_set && vmask[i][j] == 3 && j > TGbound) { 
+      	if(i <= innerPIGbound) {
+      	  result_min_PIGn = PetscMin(result_min_PIGn,result(i,j));
+      	  // result_min_PIGn = PetscMax(0,PetscMin(result_min_PIGn,result(i,j)));
+      	}
+      	if (i > innerPIGbound) {
+      	  result_min_PIGs = PetscMin(result_min_PIGs,result(i,j));
+      	  // result_min_PIGs = PetscMax(0,PetscMin(result_min_PIGs,result(i,j)));
+      	}
       }
-      if (offset_meltrate_PIG_TG_set && vmask[i][j] == 3 && j <= TGbound) {
-	result_min_TG = PetscMax(0,PetscMin(result_min_TG,result(i,j)));
+      if (offset_meltrate_PIG_TG_set && vmask[i][j] == 3 && j <= TGbound && result(i,j) > 0) {
+      	result_min_TG = PetscMin(result_min_TG,result(i,j));
+      	// result_min_TG = PetscMax(0,PetscMin(result_min_TG,result(i,j)));
       }
 
     }
@@ -319,15 +356,19 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
 	}
       }
 
-      if (offset_meltrate_PIG_TG_set && j > TGbound) {
+      if (offset_meltrate_PIG_TG_set && j > TGbound && result_min_PIGn_global < min_value) {
 	if(i <= innerPIGbound) {
 	  result(i,j) = result(i,j) - result_min_PIGn_global;
 	}
-	if(i > innerPIGbound) {
+	if(i > innerPIGbound && result_min_PIGs_global < min_value) {
 	  result(i,j) = result(i,j) - result_min_PIGs_global;
+	  if (topg_conf_set && bed[i][j] > topg_conf) {
+	    result(i,j) = result(i,j) / meltfactor_PIGs;
+	  }
 	}
       }								
-      if (offset_meltrate_PIG_TG_set && j <= TGbound){
+      if (offset_meltrate_PIG_TG_set && j <= TGbound && result_min_TG_global < min_value){
+      // if (offset_meltrate_PIG_TG_set && j <= TGbound){
 	result(i,j) = result(i,j) - result_min_TG_global;
       }
       
@@ -344,12 +385,18 @@ PetscErrorCode POConstantPIK::shelf_base_mass_flux(IceModelVec2S &result) {
       	  result(i,j) = 0.0;
       	}
       }
+      
+      if (no_melt_patch_set && i >= nomelt_PIGTGn && j <= nomelt_PIGTGe) {
+      	result(i,j) = 0.0;
+      	// ierr = PetscPrintf(PETSC_COMM_SELF,"!!! PISM_INFO: meltrate set to zero"); CHKERRQ(ierr);
+      }
 
     }
   }
 
   ierr = ice_thickness->end_access(); CHKERRQ(ierr);
   ierr = mask_array->end_access(); CHKERRQ(ierr);
+  ierr = bed_array->end_access(); CHKERRQ(ierr);
   ierr = result.end_access(); CHKERRQ(ierr);
 
   return 0;
