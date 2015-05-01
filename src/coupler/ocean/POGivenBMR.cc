@@ -76,6 +76,8 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
 
   ierr = PISMOptionsReal("-scale_bmr", "Scaling factor for sub-shelf melt rate", sf, scale_bmr_set); CHKERRQ(ierr);
 
+  ierr = PISMOptionsReal("-ulim_bmr", "Maximum sub-shelf melt rate", ulim, ulim_bmr_set); CHKERRQ(ierr);
+
   // vector<double> jb_array;
   jb_array.resize(4);
   // jb = 100;
@@ -88,6 +90,12 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
     ierr = verbPrintf(2, grid.com,
                       "* Scaling factor for sub-shelf melt rate\n"
                       "  is set for area %i<=i<=%i and %i<=j<=%i to sf=%f \n", jb_array[0],jb_array[1],jb_array[2],jb_array[3],sf); CHKERRQ(ierr);   
+  }
+
+  if (ulim_bmr_set) { 
+    ierr = verbPrintf(2, grid.com,
+                      "* Maximum sub-shelf melt rate\n"
+                      "  is set to %f m/yr\n", ulim); CHKERRQ(ierr);   
   }
 
   return 0;
@@ -168,6 +176,11 @@ PetscErrorCode POGivenBMR::shelf_base_mass_flux(IceModelVec2S &result) {
       if (scale_bmr_set && i>=jb_array[0] && i<=jb_array[1] && j>=jb_array[2] && j<=jb_array[3]) {
       // if (scale_bmr_set && j<jb) {
 	result(i,j) = sf*result(i,j);
+      }
+
+      if (ulim_bmr_set && result(i,j) > ulim/secpera) {
+      // if (scale_bmr_set && j<jb) {
+	result(i,j) = ulim/secpera;
       }
 
      }
