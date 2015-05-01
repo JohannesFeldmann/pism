@@ -82,6 +82,9 @@ netcdf pism_config {
    pism_config:subgl_type = "LI";
    pism_config:subgl_type_doc = "Different types of grounding line interpolation. LI - linear interpolation, PA - Pattyn-like interpolation";
 
+    pism_config:no_bmr_interp_set  = "false";
+    pism_config:no_bmr_interp_set_doc = "No interpolation of sub-shelf melt rate at grounding line.";
+
 
 
     pism_config:bed_deformation_model = "none";

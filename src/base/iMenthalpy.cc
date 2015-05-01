@@ -346,6 +346,7 @@ PetscErrorCode IceModel::enthalpyAndDrainageStep(
   ierr = vMask.begin_access(); CHKERRQ(ierr);
 
   const bool sub_gl = config.get_flag("sub_groundingline");
+  const bool no_bmr_interp_set = config.get_flag("no_bmr_interp_set");
   if (sub_gl){
     ierr = gl_mask.begin_access(); CHKERRQ(ierr);
    }
@@ -515,7 +516,7 @@ PetscErrorCode IceModel::enthalpyAndDrainageStep(
           ierr = esys->viewColumnInfoMFile(Enthnew, fMz); CHKERRQ(ierr);
         }
 
-	if (sub_gl)
+	if (sub_gl && no_bmr_interp_set != 1)
           vbmr(i,j) = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * vbmr(i, j);
 
         // thermodynamic basal melt rate causes water to be added to layer

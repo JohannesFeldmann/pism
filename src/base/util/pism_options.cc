@@ -668,6 +668,7 @@ PetscErrorCode set_config_from_options(MPI_Comm /*com*/, NCConfigVariable &confi
   
   ierr = config.flag_from_option("subgl", "sub_groundingline"); CHKERRQ(ierr);
   ierr = config.keyword_from_option("subgl_type", "subgl_type","LI,PA"); CHKERRQ(ierr);
+  ierr = config.flag_from_option("no_bmr_interp", "no_bmr_interp_set"); CHKERRQ(ierr);
 
   // Calving
 

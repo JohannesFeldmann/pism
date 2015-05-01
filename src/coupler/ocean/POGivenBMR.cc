@@ -98,6 +98,19 @@ PetscErrorCode POGivenBMR::init(PISMVars &vars) {
                       "  is set to %f m/yr\n", ulim); CHKERRQ(ierr);   
   }
 
+  const bool sub_gl = config.get_flag("sub_groundingline");
+  const bool no_bmr_interp_set = config.get_flag("no_bmr_interp_set");
+
+  if (no_bmr_interp_set) { 
+    ierr = verbPrintf(2, grid.com,
+                      "* Interpolation of basal melt rate at grounding line is OFF\n"); CHKERRQ(ierr);   
+  }
+
+  if (sub_gl && no_bmr_interp_set != 1) { 
+    ierr = verbPrintf(2, grid.com,
+                      "* Interpolation of basal melt rate at grounding line is ON\n"); CHKERRQ(ierr);   
+  }
+
   return 0;
 }
 

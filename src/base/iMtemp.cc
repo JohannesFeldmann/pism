@@ -207,6 +207,7 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
     }
 
     const bool sub_gl = config.get_flag("sub_groundingline");
+    const bool no_bmr_interp_set = config.get_flag("no_bmr_interp_set");
     if (sub_gl){
       ierr = gl_mask.begin_access(); CHKERRQ(ierr);
     }
@@ -397,7 +398,7 @@ PetscErrorCode IceModel::temperatureStep(PetscScalar* vertSacrCount, PetscScalar
           bwatnew -= bwat_decay_rate * dt_TempAge;
           bwat[i][j] = PetscMin(bwat_max, PetscMax(bwatnew, 0.0));
         }
-	if (sub_gl) {
+	if (sub_gl && no_bmr_interp_set != 1) {
 	  basalMeltRate[i][j] = (1.0 - gl_mask(i,j)) * shelfbmassflux(i,j) + gl_mask(i,j) * basalMeltRate[i][j];
 	}
     }
