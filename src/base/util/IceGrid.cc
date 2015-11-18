@@ -743,7 +743,7 @@ std::vector<double> IceGrid::compute_interp_weights(double X, double Y) const{
 
   if (j_bottom != j_top) {
     assert(m_impl->y[j_top] - m_impl->y[j_bottom] != 0.0);
-    beta  = (Y - m_impl->x[j_bottom]) / (m_impl->y[j_top] - m_impl->y[j_bottom]);
+    beta  = (Y - m_impl->y[j_bottom]) / (m_impl->y[j_top] - m_impl->y[j_bottom]);
   }
 
   std::vector<double> result(4);
@@ -1230,7 +1230,8 @@ void GridParameters::horizontal_extent_from_options() {
 }
 
 void GridParameters::vertical_grid_from_options(Config::ConstPtr config) {
-  options::Real Lz("-Lz", "height of the computational domain", z.back());
+  options::Real Lz("-Lz", "height of the computational domain",
+                   z.size() > 0 ? z.back() : 0.0);
   options::Integer Mz("-Mz", "grid size in Y direction", z.size());
 
   double lambda = config->get_double("grid_lambda");
