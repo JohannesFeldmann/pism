@@ -23,6 +23,7 @@
 #include "POConstant.hh"
 #include "POConstantPIK.hh"
 #include "POGivenClimate.hh"
+#include "POMismip.hh"
 #include "PO_delta_SL.hh"
 #include "PO_delta_T.hh"
 #include "PO_delta_SMB.hh"
@@ -41,6 +42,7 @@ Factory::Factory(IceGrid::ConstPtr g)
   add_model<PIK>("pik");
   add_model<Constant>("constant");
   add_model<Given>("given");
+  add_model<Mismip>("mismip");
   set_default("constant");
 
   add_modifier<Cache>("cache");
