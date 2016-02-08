@@ -66,6 +66,7 @@ void Mismip::init_impl() {
   Omega = 0.2; // yr-1
   H_0   = 75.0; // m
   z_0   = -100.0; // m
+  ice1  = false;
 
   options::RealList MOP("-mismip_ocean_parameters",
 			"mismip sub-shelf melt parameterization");
@@ -78,12 +79,37 @@ void Mismip::init_impl() {
     Omega = MOP[0];
     H_0   = MOP[1];
     z_0   = MOP[2];
+    ice1  = true;
 
     m_log->message(2,
 		   "   Omega = %3.3f yr-1\n"
 		   "   H_0 =   %3.3f m\n"
 		   "   z_0 =   %3.3f m\n",
 		   Omega, H_0, z_0);
+  }
+
+  // set defaults of mismip sub-shelf melt experiment Ice2
+  meltr = 100.0; // yr-1
+  bound = 480000.0; // m
+  ice2  = false;
+
+  options::RealList ICE2("-mismip_ocean_ice2",
+			"mismip sub-shelf melt experiment Ice2");
+
+  if (ICE2.is_set()) {
+    if (ICE2->size() != 2) {
+      throw RuntimeError("option -mismip_ocean_ice2 requires an argument"
+    			 " (comma-separated list of 2 numbers)");
+    }
+    meltr = ICE2[0];
+    bound = ICE2[1];
+    ice2  = true;
+
+    m_log->message(2, 
+		   "   \nApplying sub-shelf melting according to MISMIP+ experiment Ice2...\n"
+		   "   meltrate = %3.3f m yr-1\n"
+		   "   boundary =   %3.3f m\n",
+		   meltr, bound);
   }
 
 }
@@ -142,29 +168,59 @@ void Mismip::shelf_base_mass_flux_impl(IceModelVec2S &result) {
   
   //FIXME: gamma_T should be a function of the friction velocity, not a const
 
-  const IceModelVec2S &H = *m_grid->variables().get_2d_scalar("land_ice_thickness");
-  const IceModelVec2S &z_base = *m_grid->variables().get_2d_scalar("bedrock_altitude");
-  // const IceModelVec2S &z_base = *m_grid->variables().get_2d_scalar("bedrock_surface_elevation");
+  if (ice1 == true) {
+    const IceModelVec2S &H = *m_grid->variables().get_2d_scalar("land_ice_thickness");
+    const IceModelVec2S &z_base = *m_grid->variables().get_2d_scalar("bedrock_altitude");
+    // const IceModelVec2S &z_base = *m_grid->variables().get_2d_scalar("bedrock_surface_elevation");
 
-  IceModelVec::AccessList list;
-  list.add(H);
-  list.add(z_base);
-  list.add(result);
-  for (Points p(*m_grid); p; p.next()) {
-    const int i = p.i(), j = p.j();
+    IceModelVec::AccessList list;
+    list.add(H);
+    list.add(z_base);
+    list.add(result);
+    for (Points p(*m_grid); p; p.next()) {
+      const int i = p.i(), j = p.j();
 
-    // compute base elevation of ice shelf (ice draft)
-    double
-      z_bot = - (ice_density / sea_water_density) * H(i,j);
+      // compute base elevation of ice shelf (ice draft)
+      double
+	z_bot = - (ice_density / sea_water_density) * H(i,j);
 
-    // compute thickness of ice-shelf cavity
-    double
-      H_cav = z_bot - z_base(i,j);
+      // compute thickness of ice-shelf cavity
+      double
+	H_cav = z_bot - z_base(i,j);
 
-    result(i,j) = Omega * tanh( H_cav / H_0 ) * std::max( ( z_0 - z_bot ), 0.0); // m yr-1
+      result(i,j) = Omega * tanh( H_cav / H_0 ) * std::max( ( z_0 - z_bot ), 0.0); // m yr-1
 
-    // convert from [m yr-1] to [kg m-2 s-1]:
-    result(i,j) *= ice_density / secpera;
+      // convert from [m yr-1] to [kg m-2 s-1]:
+      result(i,j) *= ice_density / secpera;
+
+    }
+  }
+
+  if (ice2 == true) {
+    IceModelVec::AccessList list;
+    list.add(result);
+
+    for (Points p(*m_grid); p; p.next()) {
+      const int i = p.i(), j = p.j();
+      {
+	double x = m_grid->x(i);
+	if (x < -bound || x > bound) {
+	  result(i,j) = meltr * ice_density / secpera;
+	}
+	else {
+	  result(i,j) = 0.0;
+	}
+      }
+    }
+  }
+
+  if (ice1 == true && ice2 == true) {
+    // m_log->message(2,
+    //            "PISM WARNING: options -mismip_ocean_parameters AND"
+    // 		   " -mismip_ocean_ice2 set");
+    throw RuntimeError("PISM ERROR: options -mismip_ocean_parameters AND"
+		       " -mismip_ocean_ice2 set");
+  }
 
     // add 273.15 to convert from Celsius to Kelvin
 
@@ -180,7 +236,6 @@ void Mismip::shelf_base_mass_flux_impl(IceModelVec2S &result) {
 
     // convert from [m s-1] to [kg m-2 s-1]:
     // result(i,j) *= ice_density;
-  }
 }
 
 void Mismip::add_vars_to_output_impl(const std::string &keyword, std::set<std::string> &result) {

@@ -51,7 +51,8 @@ protected:
   SpatialVariableMetadata m_shelfbmassflux, m_shelfbtemp;
 private:
   //! @f$ \Omega, H_{0}, \z_{0} @f$ of MISMIP+ experiments
-  double Omega, H_0, z_0, H_cav;
+  double Omega, H_0, z_0, H_cav, meltr, bound;
+  bool ice1, ice2;
 };
 
 } // end of namespace ocean
