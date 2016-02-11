@@ -42,7 +42,8 @@ public:
   virtual void drag_with_derivative(double tauc, double vx, double vy,
                                     double *drag, double *ddrag) const;
 protected:
-  double m_plastic_regularize;
+  double m_plastic_regularize, m_tsai_coeff;
+  bool m_tsai_mod;
 };
 
 class IceBasalResistancePseudoPlasticLaw : public IceBasalResistancePlasticLaw{
@@ -54,7 +55,8 @@ public:
   virtual void drag_with_derivative(double tauc, double vx, double vy,
                                     double *drag, double *ddrag) const;
 protected:
-  double m_pseudo_q, m_pseudo_u_threshold, m_sliding_scale_factor_reduces_tauc;
+  double m_pseudo_q, m_pseudo_u_threshold, m_sliding_scale_factor_reduces_tauc, m_tsai_coeff;
+  bool m_tsai_mod;
 };
 
 } // end of namespace pism

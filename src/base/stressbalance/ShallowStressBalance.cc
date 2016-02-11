@@ -180,6 +180,10 @@ void ShallowStressBalance::compute_basal_frictional_heating(const IceModelVec2V 
                                                             const IceModelVec2S &tauc,
                                                             const IceModelVec2Int &mask,
                                                             IceModelVec2S &result) {
+
+  const IceModelVec2S *thickness = m_grid->variables().get_2d_scalar("land_ice_thickness");
+  const IceModelVec2S *bed_topography = m_grid->variables().get_2d_scalar("bedrock_altitude");
+
   MaskQuery m(mask);
 
   IceModelVec::AccessList list;
@@ -187,17 +191,52 @@ void ShallowStressBalance::compute_basal_frictional_heating(const IceModelVec2V 
   list.add(result);
   list.add(tauc);
   list.add(mask);
+  list.add(*thickness);
+  list.add(*bed_topography);
+
+  double standard_gravity = m_grid->ctx()->config()->get_double("standard_gravity"),
+    ice_density = m_grid->ctx()->config()->get_double("ice_density"),
+    sea_water_density = m_grid->ctx()->config()->get_double("sea_water_density"),
+    tsai_coeff = m_grid->ctx()->config()->get_double("tsai_coefficient");
+
+  double m_plastic_regularize = m_grid->ctx()->config()->get_double("plastic_regularization", "m/second");
   
+//   for (Points p(*m_grid); p; p.next()) {
+//     const int i = p.i(), j = p.j();
+
+//     if (m.ocean(i,j)) {
+//       result(i,j) = 0.0;
+//     } else {
+//       const double
+//         C = basal_sliding_law->drag(tauc(i,j), V(i,j).u, V(i,j).v),
+//         basal_stress_x = - C * V(i,j).u,
+//         basal_stress_y = - C * V(i,j).v;
+//       result(i,j) = - basal_stress_x * V(i,j).u - basal_stress_y * V(i,j).v;
+//     }
+//   }
+
   for (Points p(*m_grid); p; p.next()) {
     const int i = p.i(), j = p.j();
 
     if (m.ocean(i,j)) {
       result(i,j) = 0.0;
     } else {
-      const double
-        C = basal_sliding_law->drag(tauc(i,j), V(i,j).u, V(i,j).v),
-        basal_stress_x = - C * V(i,j).u,
-        basal_stress_y = - C * V(i,j).v;
+
+      double beta = 0.0;
+      if (m_grid->ctx()->config()->get_boolean("do_tsai_modification") == true) {
+	const double magreg2 = PetscSqr(m_plastic_regularize) + PetscSqr(V(i,j).u) + PetscSqr(V(i,j).v);
+	double flotation_thickness = std::max(0.0, -(sea_water_density/ice_density) * (*bed_topography)(i,j)); 
+	double beta1 = basal_sliding_law->drag(tauc(i,j), V(i,j).u, V(i,j).v);
+	double thk = (*thickness)(i,j);
+	double beta2 = tsai_coeff * ice_density * standard_gravity * (thk-flotation_thickness) / sqrt(magreg2);
+	beta =  std::min(beta1, beta2);
+      } else {
+	beta = basal_sliding_law->drag(tauc(i,j), V(i,j).u, V(i,j).v);
+      }
+
+      double basal_stress_x = - beta * V(i,j).u;
+      double basal_stress_y = - beta * V(i,j).v;
+      
       result(i,j) = - basal_stress_x * V(i,j).u - basal_stress_y * V(i,j).v;
     }
   }
@@ -501,14 +540,26 @@ IceModelVec::Ptr SSB_taub::compute() {
 
   IceModelVec2V::Ptr result(new IceModelVec2V);
   result->create(m_grid, "result", WITHOUT_GHOSTS);
-  result->metadata() = m_vars[0];
+  result->metadata(0) = m_vars[0];
   result->metadata(1) = m_vars[1];
 
   const IceModelVec2V &velocity = model->velocity();
   const IceModelVec2S   *tauc = m_grid->variables().get_2d_scalar("tauc");
   const IceModelVec2Int *mask = m_grid->variables().get_2d_mask("mask");
 
+  const IceModelVec2S *thickness = m_grid->variables().get_2d_scalar("land_ice_thickness");
+  const IceModelVec2S *bed_topography = m_grid->variables().get_2d_scalar("bedrock_altitude");
+
+  double standard_gravity = m_grid->ctx()->config()->get_double("standard_gravity"),
+    ice_density = m_grid->ctx()->config()->get_double("ice_density"),
+    sea_water_density = m_grid->ctx()->config()->get_double("sea_water_density"),
+    tsai_coeff = m_grid->ctx()->config()->get_double("tsai_coefficient");
+
   const IceBasalResistancePlasticLaw *basal_sliding_law = model->sliding_law();
+
+  double m_plastic_regularize = m_grid->ctx()->config()->get_double("plastic_regularization", "m/second");
+
+//   double m_tsai_coeff = m_grid->ctx()->config()->get_double("tsai_coefficient", "");
 
   MaskQuery m(*mask);
 
@@ -517,11 +568,34 @@ IceModelVec::Ptr SSB_taub::compute() {
   list.add(*tauc);
   list.add(velocity);
   list.add(*mask);
+  list.add(*thickness);
+  list.add(*bed_topography);
+  
+  // inserted
+  // if (m_grid->ctx()->config()->get_boolean("do_tsai_modification") == true) {
+  //   log.message(threshold,
+  // 		"Modifying till power law according to Tsai et al, JoG, 2015, Eq. (8),"
+  // 		"with friction coefficient = %.2f.\n",
+  // 		tsai_coefficient);
+  // }
+  // inserted end
+
   for (Points p(*m_grid); p; p.next()) {
     const int i = p.i(), j = p.j();
 
     if (m.grounded_ice(i,j)) {
-      double beta = basal_sliding_law->drag((*tauc)(i,j), velocity(i,j).u, velocity(i,j).v);
+      double beta = 0.0;
+
+      if (m_grid->ctx()->config()->get_boolean("do_tsai_modification") == true) {
+	const double magreg2 = PetscSqr(m_plastic_regularize) + PetscSqr(velocity(i,j).u) + PetscSqr(velocity(i,j).v);
+	double flotation_thickness = std::max(0.0, -(sea_water_density/ice_density) * (*bed_topography)(i,j)); 
+	double beta1 = basal_sliding_law->drag((*tauc)(i,j), velocity(i,j).u, velocity(i,j).v);
+	double thk = (*thickness)(i,j);
+	double beta2 = tsai_coeff * ice_density * standard_gravity * (thk-flotation_thickness) / sqrt(magreg2);
+	beta =  std::min(beta1, beta2);
+      } else {
+	beta = basal_sliding_law->drag((*tauc)(i,j), velocity(i,j).u, velocity(i,j).v);
+      }
       (*result)(i,j).u = - beta * velocity(i,j).u;
       (*result)(i,j).v = - beta * velocity(i,j).v;
     } else {

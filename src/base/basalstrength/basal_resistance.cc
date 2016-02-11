@@ -28,6 +28,8 @@ namespace pism {
 
 IceBasalResistancePlasticLaw::IceBasalResistancePlasticLaw(const Config &config) {
   m_plastic_regularize = config.get_double("plastic_regularization", "m/second");
+  m_tsai_mod = config.get_boolean("do_tsai_modification");
+  m_tsai_coeff = config.get_double("tsai_coefficient");
 }
 
 IceBasalResistancePlasticLaw::~IceBasalResistancePlasticLaw() {
@@ -39,6 +41,15 @@ void IceBasalResistancePlasticLaw::print_info(const Logger &log,
                                               units::System::Ptr system) const {
   log.message(threshold, "Using purely plastic till with eps = %10.5e m/year.\n",
                units::convert(system, m_plastic_regularize, "m/s", "m/year"));
+
+  if (m_tsai_mod == true) {
+    log.message(2,
+		"Using modification of pseudo-plastic till model\n"
+		"according to TsaiEtAl2015\n"
+		"with coefficient = %.2f .\n", 
+		m_tsai_coeff);
+  }
+
 }
 
 
@@ -74,6 +85,8 @@ IceBasalResistancePseudoPlasticLaw::IceBasalResistancePseudoPlasticLaw(const Con
   m_pseudo_q = config.get_double("pseudo_plastic_q");
   m_pseudo_u_threshold = config.get_double("pseudo_plastic_uthreshold", "m/second");
   m_sliding_scale_factor_reduces_tauc = config.get_double("sliding_scale_factor_reduces_tauc");
+  m_tsai_mod = config.get_boolean("do_tsai_modification");
+  m_tsai_coeff = config.get_double("tsai_coefficient");
 }
 
 IceBasalResistancePseudoPlasticLaw::~IceBasalResistancePseudoPlasticLaw() {
@@ -95,6 +108,14 @@ void IceBasalResistancePseudoPlasticLaw::print_info(const Logger &log,
                  units::convert(system, m_plastic_regularize, "m/s", "m/year"),
                  m_pseudo_q,
                  units::convert(system, m_pseudo_u_threshold, "m/s", "m/year"));
+  }
+
+  if (m_tsai_mod == true) {
+    log.message(2,
+		"Using modification of pseudo-plastic till model\n"
+		"according to TsaiEtAl2015\n"
+		"with coefficient = %.2f .\n", 
+		m_tsai_coeff);
   }
 }
 
