@@ -65,6 +65,11 @@ netcdf pism_config {
     pism_config:do_pseudo_plastic_till = "no";
     pism_config:do_pseudo_plastic_till_doc = "Use the pseudo-plastic till model (basal sliding law).";
 
+    pism_config:do_tsai_modification_type = "boolean";
+    pism_config:do_tsai_modification_option = "pseudo_plastic_tsai_mod";
+    pism_config:do_tsai_modification = "no";
+    pism_config:do_tsai_modification_doc = "Modification of the pseudo-plastic till model (basal sliding law) according to Tsai et al, JoG, 2015, Eq.(8)";
+
     pism_config:verbose_pik_messages_type = "boolean";
     pism_config:verbose_pik_messages = "no";
     pism_config:verbose_pik_messages_doc = "Display verbose PIK messages e.g. about iceberg removal.";
@@ -610,6 +615,12 @@ netcdf pism_config {
     pism_config:pseudo_plastic_uthreshold_type = "scalar";
     pism_config:pseudo_plastic_uthreshold = 100.0;
     pism_config:pseudo_plastic_uthreshold_doc = "threshold velocity of the pseudo-plastic sliding law";
+
+    pism_config:tsai_coefficient_option = "pseudo_plastic_tsai_f";
+    pism_config:tsai_coefficient_units = "pure number";
+    pism_config:tsai_coefficient_type = "scalar";
+    pism_config:tsai_coefficient = 0.5;
+    pism_config:tsai_coefficient_doc = "Friction coefficient f in Tsai et al, JoG, 2015, Eq.(8)";
 
     pism_config:ssafd_relative_convergence_option = "ssa_rtol";
     pism_config:ssafd_relative_convergence_units = "1";
