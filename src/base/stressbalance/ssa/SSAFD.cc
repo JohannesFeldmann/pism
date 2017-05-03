@@ -744,7 +744,24 @@ void SSAFD::assemble_matrix(bool include_basal_shear, Mat A) {
       double beta = 0.0;
       if (include_basal_shear) {
         if (grounded_ice(M_ij)) {
-          beta = basal_sliding_law->drag((*m_tauc)(i,j), vel(i,j).u, vel(i,j).v);
+
+	  if (m_config->get_boolean("do_tsai_modification") == true) {
+	    list.add(*m_thickness);
+	    list.add(*m_bed);
+	    double standard_gravity = m_config->get_double("standard_gravity"),
+	      ice_density = m_config->get_double("ice_density"),
+	      sea_water_density = m_config->get_double("sea_water_density"),
+	      tsai_coeff = m_config->get_double("tsai_coefficient");
+	    double m_plastic_regularize = m_config->get_double("plastic_regularization", "m/second");
+	    const double magreg2 = PetscSqr(m_plastic_regularize) + PetscSqr(vel(i,j).u) + PetscSqr(vel(i,j).v);
+	    double flotation_thickness = std::max(0.0, -(sea_water_density/ice_density) * (*m_bed)(i,j)); 
+	    double beta1 = basal_sliding_law->drag((*m_tauc)(i,j), vel(i,j).u, vel(i,j).v);
+	    double thk = (*m_thickness)(i,j);
+	    double beta2 = tsai_coeff * ice_density * standard_gravity * (thk-flotation_thickness) / sqrt(magreg2);
+	    beta = std::min(beta1, beta2);
+	  } else {
+	    beta = basal_sliding_law->drag((*m_tauc)(i,j), vel(i,j).u, vel(i,j).v);
+	  }
         } else if (ice_free_land(M_ij)) {
           // apply drag even in this case, to help with margins; note ice free
           // areas already have a strength extension
