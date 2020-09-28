@@ -31,6 +31,7 @@
 #include "Cache.hh"
 #include "GivenTH.hh"
 #include "Pico.hh"
+#include "AdaptiveGL.hh"
 
 namespace pism {
 namespace ocean {
@@ -43,6 +44,7 @@ Factory::Factory(IceGrid::ConstPtr g)
   add_model<Constant>("constant");
   add_model<Pico>("pico");
   add_model<Given>("given");
+  add_model<AdaptiveGL>("adaptive");
 
   add_modifier<Anomaly>("anomaly");
   add_modifier<Cache>("cache");

@@ -1,4 +1,5 @@
 %{
+#include "coupler/ocean/AdaptiveGL.hh"
 #include "coupler/ocean/Constant.hh"
 #include "coupler/ocean/Cache.hh"
 #include "coupler/ocean/ConstantPIK.hh"

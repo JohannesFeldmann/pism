@@ -30,6 +30,7 @@ add_library (boundary OBJECT
   ./ocean/OceanModel.cc
   ./ocean/CompleteOceanModel.cc
   ./ocean/Cache.cc
+  ./ocean/AdaptiveGL.cc
   ./ocean/ConstantPIK.cc
   ./ocean/Constant.cc
   ./ocean/GivenClimate.cc
