@@ -30,6 +30,7 @@
 #include "Frac_SMB.hh"
 #include "Cache.hh"
 #include "GivenTH.hh"
+#include "MISMIP.hh"
 #include "Pico.hh"
 #include "AdaptiveGL.hh"
 
@@ -45,6 +46,7 @@ Factory::Factory(IceGrid::ConstPtr g)
   add_model<Pico>("pico");
   add_model<Given>("given");
   add_model<AdaptiveGL>("adaptive");
+  add_model<MISMIP>("mismip");
 
   add_modifier<Anomaly>("anomaly");
   add_modifier<Cache>("cache");

@@ -42,6 +42,7 @@ add_library (boundary OBJECT
   ./ocean/Frac_SMB.cc
   ./ocean/Factory.cc
   ./ocean/Initialization.cc
+  ./ocean/MISMIP.cc
   ./ocean/Pico.cc
   ./ocean/PicoPhysics.cc
   ./ocean/PicoGeometry.cc
