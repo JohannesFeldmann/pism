@@ -42,7 +42,8 @@ private:
   double melt_rate,
          experiment,
          width,
-         length;
+         length,
+         dist;
   static const int  maskfloating,
                     maskocean,
                     maskgrounded,

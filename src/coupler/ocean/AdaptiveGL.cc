@@ -66,6 +66,11 @@ void AdaptiveGL::init_impl(const Geometry &geometry) {
   width = options::Real("-width",
                              "Specify the width of the applied melt stripe",
                              width);
+
+  dist = 0.0;
+  dist = options::Real("-dist",
+			"Specify the distance to the grounding line of the applied melt stripe",
+			dist);
 }
 
 MaxTimestep AdaptiveGL::max_timestep_impl(double t) const {
@@ -147,14 +152,22 @@ void AdaptiveGL::mass_flux(const IceModelVec2S &ice_thickness, IceModelVec2S &re
   if (experiment==1){ // melting at central part of GL
     m_log->message(2, "Experiment: Melting at the central part of GL, "); 
     m_log->message(2, "Melt rate is %f m per yr \n",melt_rate*3.15569259747e7); // in units m/yr
+    m_log->message(2, "Dist is %f boxes \n",dist);
     int mid = (m_grid->My() - 1)/2;
+    int midx = (m_grid->Mx() - 1)/2;
 
     // FIND FIRST ROW, STILL GROUNDED
     for (Points p(*m_grid); p; p.next()) {
         const int i = p.i(), j = p.j();
         if (j >= mid -length/2 && j <= mid + length/2){
           if (mask(i,j)==maskgrounded && ( mask(i-1,j)==maskfloating || mask(i+1,j)==maskfloating) ){
-            melt_mask(i,j) = expmask_include;
+	    // SHIFT BY "dist" AWAY FROM GROUNDING LINE INTO THE ICE SHELF
+	    if (i > midx){
+	      melt_mask(i+dist+1,j) = expmask_include;
+	    }
+	    if (i < midx){
+	      melt_mask(i-dist-1,j) = expmask_include;
+	    }
           }
         } //if
     } //p
@@ -162,16 +175,21 @@ void AdaptiveGL::mass_flux(const IceModelVec2S &ice_thickness, IceModelVec2S &re
     melt_mask.update_ghosts();
     
     // ITERATE INTO SHELF
-    for (int k=0; k<width; k++){
+    for (int k=0; k<width-1; k++){
       m_log->message(2, "%d s iteration over width\n",k);
       //find possible cells
       for (Points p(*m_grid); p; p.next()) {
         const int i = p.i(), j = p.j();  
 
-        if (mask(i,j)!=maskgrounded && melt_mask(i,j)==expmask_unidentified && ( melt_mask(i-1,j)==expmask_include || melt_mask(i+1,j)==expmask_include) ){
-              melt_mask(i,j) = expmask_neighboring;
+        if (mask(i,j)!=maskgrounded && melt_mask(i,j)==expmask_unidentified) {
+	  if (i < midx && melt_mask(i+1,j) == expmask_include) {
+	    melt_mask(i,j) = expmask_neighboring;
+	  }
+	  if (i > midx && melt_mask(i-1,j) == expmask_include) {
+	    melt_mask(i,j) = expmask_neighboring;
+	  }
+	}
 
-        }
       } //p
       // relabel possible cells
 
@@ -247,7 +265,13 @@ void AdaptiveGL::mass_flux(const IceModelVec2S &ice_thickness, IceModelVec2S &re
         const int i = p.i(), j = p.j();
         if ( (i >= left_x -length/2 && i <= left_x + length/2) || (i >= right_x - length/2 && i <=right_x + length/2 )) {
           if (mask(i,j)==maskgrounded && ( mask(i,j-1)==maskfloating || mask(i,j+1)==maskfloating) ){
-            melt_mask(i,j) = expmask_include;
+	    // SHIFT BY "dist" AWAY FROM GROUNDING LINE INTO THE ICE SHELF
+	    if (j < mid_y){
+	      melt_mask(i,j+dist+1) = expmask_include;
+	    }
+	    if (j > mid_y){
+	      melt_mask(i,j-dist-1) = expmask_include;
+	    }
           }
         } //if
     } //p
@@ -255,14 +279,19 @@ void AdaptiveGL::mass_flux(const IceModelVec2S &ice_thickness, IceModelVec2S &re
     melt_mask.update_ghosts();
     
     //ITERATE INTO SHELF
-    for (int k=0; k<width; k++){
+    for (int k=0; k<width-1; k++){
       //find possible cells
   	    m_log->message(2, "%d s iteration over width\n",k);
       
       for (Points p(*m_grid); p; p.next()) {
         const int i = p.i(), j = p.j();
-        if (mask(i,j)!=maskgrounded && melt_mask(i,j)==expmask_unidentified && ( melt_mask(i,j-1)==expmask_include || melt_mask(i,j+1)==expmask_include) ){
-          melt_mask(i,j) = expmask_neighboring;
+        if (mask(i,j)!=maskgrounded && melt_mask(i,j)==expmask_unidentified) {
+	  if (i < mid_y && melt_mask(i,j-1)==expmask_include) {
+	    melt_mask(i,j) = expmask_neighboring;
+	  }
+	  if (i > mid_y && melt_mask(i,j+1)==expmask_include) {
+	    melt_mask(i,j) = expmask_neighboring;
+	  }
         }
       } //p
       
