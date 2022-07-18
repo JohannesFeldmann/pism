@@ -39,6 +39,8 @@ private:
 
   IceModelVec2Int melt_mask;
 
+  bool lathalf;
+  
   double melt_rate,
          experiment,
          width,
